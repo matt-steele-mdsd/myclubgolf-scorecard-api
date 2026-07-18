@@ -1,0 +1,7 @@
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerAppRoot "/home/ueyyvlw94xm4/public_html/phoneAI"
+PassengerBaseURI "/"
+PassengerNodejs "/home/ueyyvlw94xm4/nodevenv/public_html/phoneAI/24/bin/node"
+PassengerAppType node
+PassengerStartupFile dist/server.js
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END

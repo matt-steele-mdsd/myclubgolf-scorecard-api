@@ -1,0 +1,13 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "bundler",
+    "outDir": "./dist",
+    "rootDir": "."
+  },
+  "include": ["server.ts", "src/**/*"],
+  "exclude": ["node_modules", "dist", "app/**/*", "App.tsx", "node_modules/expo-constants"]
+}

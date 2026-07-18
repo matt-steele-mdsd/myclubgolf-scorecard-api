@@ -1,0 +1,43 @@
+{
+  "name": "phoneai",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@react-native-picker/picker": "^2.11.4",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.0.0",
+    "cors": "^2.8.6",
+    "expo": "^56.0.12",
+    "expo-constants": "~56.0.18",
+    "expo-dev-client": "~56.0.20",
+    "expo-image-picker": "~56.0.19",
+    "expo-linking": "~56.0.14",
+    "expo-router": "~56.2.11",
+    "expo-status-bar": "~56.0.4",
+    "expo-updates": "~56.0.19",
+    "express": "^5.2.1",
+    "mysql2": "^3.22.5",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-web": "^0.21.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "concurrently": "^10.0.3",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "dev": "concurrently \"npx tsx server.ts\" \"expo start --web\"",
+    "server": "npx tsx server.ts",
+    "build-server": "tsc --project tsconfig.server.json",
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}

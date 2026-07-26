@@ -5,3 +5,10 @@ PassengerNodejs "/home/ueyyvlw94xm4/nodevenv/public_html/phoneAI/24/bin/node"
 PassengerAppType node
 PassengerStartupFile dist/server.js
 # DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
+# DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION BEGIN
+<IfModule Litespeed>
+SetEnv NODE_ENV production
+SetEnv PASSENGER_APP_ENV development
+SetEnv PASSENGER_FRIENDLY_ERROR_PAGES on
+</IfModule>
+# DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION END

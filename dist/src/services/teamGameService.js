@@ -18,9 +18,31 @@ exports.addOrUpdateGroupTeam = addOrUpdateGroupTeam;
 exports.getTeamGameResults = getTeamGameResults;
 exports.getTeamGameCutSummary = getTeamGameCutSummary;
 exports.getTeamGameScorecard = getTeamGameScorecard;
+exports.getKeepFormatTeamsForPlayers = getKeepFormatTeamsForPlayers;
+exports.getIrishRumbleTeamsForPlayers = getIrishRumbleTeamsForPlayers;
+exports.getTeamGameHoleKeepCounts = getTeamGameHoleKeepCounts;
+exports.saveTeamGameHoleKeepCount = saveTeamGameHoleKeepCount;
+exports.getTeamGameLiveLeaderboard = getTeamGameLiveLeaderboard;
+exports.getIrishRumbleLiveLeaderboard = getIrishRumbleLiveLeaderboard;
+exports.getBestPossibleWeeks = getBestPossibleWeeks;
+exports.getTeamBestPossible = getTeamBestPossible;
 const config_1 = __importDefault(require("../db/config"));
 const randomTeamsService_1 = require("./randomTeamsService");
 const optionsService_1 = require("./optionsService");
+const teamKeep_1 = require("../utils/teamKeep");
+/** Legacy per-size format values from before this collapsed into one -- still recognized so
+ * existing TeamGame rows / EventOptions values created before this change keep working, without
+ * needing a data migration. Only ever produced going forward is TEAMS_KEEP_FORMAT ('36/48'). */
+function isKeepFormat(format) {
+    return format === teamKeep_1.TEAMS_KEEP_FORMAT || format === '36' || format === '48';
+}
+/** Irish Rumble -- a fixed-foursome format with a deterministic, hole-varying keep count (see
+ * irishRumbleKeepCountForHole), not a live per-hole choice, so it's scored through the same
+ * fixed-KeepCount code path 'custom' uses (including padding for a short-handed group), just
+ * with the "fixed" count swapped for one that depends on which hole it is. */
+function isIrishFormat(format) {
+    return format === teamKeep_1.IRISH_RUMBLE_FORMAT;
+}
 /** Which Options "Teams N" card (1-4) a given slot number maps to. */
 function slotPrefix(slot) {
     const capped = Math.min(4, Math.max(1, slot));
@@ -80,6 +102,7 @@ async function listTeamGames(gameId) {
         skipped: r.Skipped === 'T',
         hasPlayers: Number(r.PlayerCount) > 0,
         slot: r.Slot === null || r.Slot === undefined ? null : Number(r.Slot),
+        format: r.Format || 'custom',
     }));
 }
 /**
@@ -97,16 +120,35 @@ async function listTeamGames(gameId) {
  * `undefined`/omit for a one-off team game not tied to any card. Each configured slot is
  * independently settable up or skipped in any order (confirmed 2026-07-08: there's no
  * requirement to set up Teams 1 before Teams 2), so this can't be inferred from creation order.
+ *
+ * `format` defaults to 'custom' (the classic configurable team size/keep count rule above). For
+ * the two "predefined" formats (36/48 and Irish Rumble), `teamSize`/`keepCount` are ignored in
+ * favor of the same placeholder-0 convention autoProvisionPartnerTeamsSlots uses (never read for
+ * scoring), and `assignMode` must be 'G' -- there's no meaningful "Random" or "Manual" draw for a
+ * format whose whole point is the real, physically-present foursome. This is what lets Team
+ * Games' "+ One-Off Team Game" button offer a one-off 36/48 or Irish Rumble game for a single
+ * week without touching the event's Options default (confirmed with Matt 2026-07-26: Options
+ * describes the event's standard format, not something to toggle back and forth for a one-off
+ * week) -- create it here with `slot` omitted, and it still auto-fills correctly from whichever
+ * foursome checks in via Start Game, exactly like an Options-driven slot does.
  */
-async function createTeamGame(gameId, label, teamSize, keepCount, assignMode, lastHoleAll, slot) {
+async function createTeamGame(gameId, label, teamSize, keepCount, assignMode, lastHoleAll, slot, format = 'custom') {
+    if (isKeepFormat(format) || isIrishFormat(format)) {
+        if (assignMode !== 'G') {
+            throw new Error('36/48 and Irish Rumble team games must use Playing Groups assignment');
+        }
+        const [result] = await config_1.default.query(`INSERT INTO TeamGame (GameID, Label, TeamSize, KeepCount, AssignMode, LastHoleAll, Slot, Format, LastUpdateUser)
+       VALUES (?, ?, 0, 0, 'G', ?, ?, ?, 'App')`, [gameId, label, lastHoleAll ? 'T' : 'F', slot ?? null, format]);
+        return result.insertId;
+    }
     if (![2, 3, 4].includes(teamSize))
         throw new Error('teamSize must be 2, 3, or 4');
     if (keepCount < 1 || keepCount > teamSize)
         throw new Error('keepCount must be between 1 and teamSize');
     if (assignMode === 'R' && teamSize !== 2)
         throw new Error('Random assignment is only available for 2-person teams');
-    const [result] = await config_1.default.query(`INSERT INTO TeamGame (GameID, Label, TeamSize, KeepCount, AssignMode, LastHoleAll, Slot, LastUpdateUser)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'App')`, [gameId, label, teamSize, keepCount, assignMode, lastHoleAll ? 'T' : 'F', slot ?? null]);
+    const [result] = await config_1.default.query(`INSERT INTO TeamGame (GameID, Label, TeamSize, KeepCount, AssignMode, LastHoleAll, Slot, Format, LastUpdateUser)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'App')`, [gameId, label, teamSize, keepCount, assignMode, lastHoleAll ? 'T' : 'F', slot ?? null, format]);
     return result.insertId;
 }
 /**
@@ -349,11 +391,19 @@ async function autoProvisionPartnerTeamsSlots(gameId) {
         const prefix = slotPrefix(slot);
         if (!options[`${prefix}_partnerteams`])
             continue;
-        const teamSize = Number(options[`${prefix}_teamsize`]) || 2;
-        const keepCount = Math.min(teamSize, Number(options[`${prefix}_keepcount`]) || 1);
+        const format = options[`${prefix}_format`] || 'custom';
+        // 36/48 has no fixed team size or KeepCount at all -- team size is whatever headcount
+        // actually shows up (see getKeepFormatTeamsForPlayers), and KeepCount is chosen live, hole
+        // by hole (see TeamGameHoleKeep). Irish Rumble assumes a real foursome (its "2/3/4" counts
+        // are fixed, not headcount-scaled) and its KeepCount varies by hole (see
+        // irishRumbleKeepCountForHole), never a single fixed number. TeamSize/KeepCount below are
+        // just harmless placeholders for both formats, never read for scoring
+        // (getTeamGameResults/getTeamGameScorecard branch on Format instead).
+        const teamSize = isKeepFormat(format) ? 0 : isIrishFormat(format) ? 4 : Number(options[`${prefix}_teamsize`]) || 2;
+        const keepCount = isKeepFormat(format) || isIrishFormat(format) ? 0 : Math.min(teamSize, Number(options[`${prefix}_keepcount`]) || 1);
         const lastHoleAll = !!options[`${prefix}_lastholeall`];
-        await config_1.default.query(`INSERT INTO TeamGame (GameID, Label, TeamSize, KeepCount, AssignMode, LastHoleAll, Slot, LastUpdateUser)
-       VALUES (?, ?, ?, ?, 'G', ?, ?, 'App')`, [gameId, `Teams ${slot}`, teamSize, keepCount, lastHoleAll ? 'T' : 'F', slot]);
+        await config_1.default.query(`INSERT INTO TeamGame (GameID, Label, TeamSize, KeepCount, AssignMode, LastHoleAll, Slot, Format, LastUpdateUser)
+       VALUES (?, ?, ?, ?, 'G', ?, ?, ?, 'App')`, [gameId, `Teams ${slot}`, teamSize, keepCount, lastHoleAll ? 'T' : 'F', slot, format]);
     }
 }
 /**
@@ -487,13 +537,26 @@ function pickPadPlayerIds(teamGameId, teamNumber, holeId, presentPlayerIds, padC
  * signal added first.
  */
 async function getTeamGameResults(teamGameId) {
-    const [tgRows] = await config_1.default.query(`SELECT tg.GameID, tg.KeepCount, tg.LastHoleAll FROM TeamGame tg WHERE tg.TeamGameID = ?`, [teamGameId]);
+    const [tgRows] = await config_1.default.query(`SELECT tg.GameID, tg.KeepCount, tg.LastHoleAll, tg.Format FROM TeamGame tg WHERE tg.TeamGameID = ?`, [teamGameId]);
     if (tgRows.length === 0)
         return [];
     const gameId = tgRows[0].GameID;
     const keepCount = tgRows[0].KeepCount;
     const lastHoleAll = tgRows[0].LastHoleAll === 'T';
+    const format = tgRows[0].Format || 'custom';
+    const usesLiveKeepPicker = isKeepFormat(format);
+    // A bare net total doesn't mean anything to compare across teams for these two formats (36/48
+    // teams can be different sizes; Irish Rumble's keep count varies by hole) -- show +/- to par
+    // instead. 'custom' and the legacy Team-table path are unaffected, still showing raw net.
+    const showParRelative = usesLiveKeepPicker || isIrishFormat(format);
     const maxRosterSize = await getMaxRosterSize(teamGameId);
+    let parByHole = new Map();
+    if (showParRelative) {
+        const [gameCourseRows] = await config_1.default.query('SELECT CourseID FROM Game WHERE GameID = ?', [gameId]);
+        const courseId = gameCourseRows[0]?.CourseID;
+        const [holeRows] = await config_1.default.query('SELECT HoleNum, Par FROM CourseDetails WHERE CourseID = ?', [courseId]);
+        parByHole = new Map(holeRows.map((h) => [h.HoleNum, h.Par]));
+    }
     const [rows] = await config_1.default.query(`SELECT tgp.TeamNumber, tgp.PlayerID, s.HoleID, s.NetScore
      FROM TeamGamePlayer tgp
      INNER JOIN Score s ON s.PlayerID = tgp.PlayerID AND s.GameID = ?
@@ -508,15 +571,33 @@ async function getTeamGameResults(teamGameId) {
             perHole.set(r.HoleID, []);
         perHole.get(r.HoleID).push({ playerId: r.PlayerID, net: Number(r.NetScore) });
     }
+    // 36/48: each team's own live, hole-by-hole choice of how many net scores to keep (see
+    // TeamGameHoleKeep) replaces the fixed KeepCount slice entirely for this team game.
+    const holeKeepByTeam = new Map();
+    if (usesLiveKeepPicker) {
+        const [keepRows] = await config_1.default.query('SELECT TeamNumber, HoleID, KeepCount FROM TeamGameHoleKeep WHERE TeamGameID = ?', [teamGameId]);
+        for (const r of keepRows) {
+            if (!holeKeepByTeam.has(r.TeamNumber))
+                holeKeepByTeam.set(r.TeamNumber, new Map());
+            holeKeepByTeam.get(r.TeamNumber).set(r.HoleID, r.KeepCount);
+        }
+    }
     function sumSide(teamNumber, perHole, holeFilter) {
         const holeIds = [...perHole.keys()];
         const lastHole = lastHoleAll && holeIds.length > 0 ? Math.max(...holeIds) : null;
-        let total = 0;
+        let net = 0;
+        let par = 0;
         for (const [holeId, present] of perHole) {
             if (!holeFilter(holeId) || present.length === 0)
                 continue;
             const nets = present.map((p) => p.net);
-            const padCount = Math.max(0, maxRosterSize - present.length);
+            // Padding (borrowing a teammate's score twice to match the largest team's roster size)
+            // only applies to 'custom' -- it existed so a smaller team wasn't unfairly stuck choosing
+            // from fewer scores under one shared fixed KeepCount. 36/48 doesn't need it: each team's
+            // target already scales with its own real headcount, so a smaller team is never
+            // disadvantaged, and padding would double-count a player and distort which scores actually
+            // get kept (confirmed with Matt 2026-07-24).
+            const padCount = usesLiveKeepPicker ? 0 : Math.max(0, maxRosterSize - present.length);
             if (padCount > 0) {
                 const presentIds = present.map((p) => p.playerId);
                 for (const pickedId of pickPadPlayerIds(teamGameId, teamNumber, holeId, presentIds, padCount)) {
@@ -524,10 +605,26 @@ async function getTeamGameResults(teamGameId) {
                 }
             }
             const sorted = nets.sort((a, b) => a - b);
-            const kept = holeId === lastHole ? sorted : sorted.slice(0, keepCount);
-            total += kept.reduce((sum, s) => sum + s, 0);
+            let kept;
+            if (usesLiveKeepPicker) {
+                // The team's own live choice for this hole -- falls back to keeping every present score
+                // if no choice was ever recorded (shouldn't happen under normal play, since the live
+                // picker hard-blocks advancing past a hole until it's chosen, but this stays safe rather
+                // than silently shorting a team's honest total for old or edge-case data).
+                const chosen = holeKeepByTeam.get(teamNumber)?.get(holeId);
+                kept = chosen !== undefined ? sorted.slice(0, chosen) : sorted;
+            }
+            else {
+                // Irish Rumble's keep count is a fixed rule of the hole number itself (2/3/4), not a
+                // single number for the whole round like 'custom' -- everything else (padding, Tommy
+                // Davis) works exactly the same as 'custom'.
+                const effectiveKeepCount = isIrishFormat(format) ? (0, teamKeep_1.irishRumbleKeepCountForHole)(holeId) : keepCount;
+                kept = holeId === lastHole ? sorted : sorted.slice(0, effectiveKeepCount);
+            }
+            net += kept.reduce((sum, s) => sum + s, 0);
+            par += (parByHole.get(holeId) ?? 0) * kept.length;
         }
-        return total;
+        return { net, par };
     }
     const [rosterRows] = await config_1.default.query(`SELECT tgp.TeamNumber, CONCAT(p.LastName, ', ', p.FirstName) AS name
      FROM TeamGamePlayer tgp
@@ -540,6 +637,10 @@ async function getTeamGameResults(teamGameId) {
             rosterByTeam.set(r.TeamNumber, []);
         rosterByTeam.get(r.TeamNumber).push(r.name);
     }
+    function scoreVsPar(net, par) {
+        const diff = net - par;
+        return diff === 0 ? 'Even' : diff > 0 ? `+${diff}` : `${diff}`;
+    }
     const teamNumbers = new Set([...holeScores.keys(), ...rosterByTeam.keys()]);
     return Array.from(teamNumbers)
         .sort((a, b) => a - b)
@@ -549,10 +650,15 @@ async function getTeamGameResults(teamGameId) {
         const back = sumSide(teamNumber, perHole, (h) => h > 9);
         return {
             teamId: teamNumber,
-            front,
-            back,
-            total: front + back,
+            front: front.net,
+            back: back.net,
+            total: front.net + back.net,
             players: rosterByTeam.get(teamNumber) || [],
+            ...(showParRelative ? {
+                frontPar: scoreVsPar(front.net, front.par),
+                backPar: scoreVsPar(back.net, back.par),
+                totalPar: scoreVsPar(front.net + back.net, front.par + back.par),
+            } : {}),
         };
     });
 }
@@ -582,13 +688,22 @@ async function getTeamGameCutSummary(teamGameId) {
 async function getTeamGameScorecard(teamGameId, teamNumber, side) {
     const holeStart = side === 'B' ? 10 : 1;
     const holeEnd = side === 'F' ? 9 : 18;
-    const [tgRows] = await config_1.default.query('SELECT GameID, KeepCount, LastHoleAll FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
+    const [tgRows] = await config_1.default.query('SELECT GameID, KeepCount, LastHoleAll, Format FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
     if (tgRows.length === 0)
         return { rows: [], holeTotals: {} };
     const gameId = tgRows[0].GameID;
     const keepCount = tgRows[0].KeepCount;
     const lastHoleAll = tgRows[0].LastHoleAll === 'T';
+    const format = tgRows[0].Format || 'custom';
+    const usesLiveKeepPicker = isKeepFormat(format);
     const maxRosterSize = await getMaxRosterSize(teamGameId);
+    // 36/48: this team's own live, hole-by-hole keep choices (see TeamGameHoleKeep) replace the
+    // fixed KeepCount slice below, same as getTeamGameResults.
+    let holeKeep = new Map();
+    if (usesLiveKeepPicker) {
+        const [keepRows] = await config_1.default.query('SELECT HoleID, KeepCount FROM TeamGameHoleKeep WHERE TeamGameID = ? AND TeamNumber = ?', [teamGameId, teamNumber]);
+        holeKeep = new Map(keepRows.map((r) => [r.HoleID, r.KeepCount]));
+    }
     // The true last hole of the WHOLE round (not just whichever side is being viewed) — needed so
     // the "All players last hole" rule only ever fires on the actual final hole (18 for a full
     // round). Fixed 2026-07-09: computing this from the side-scoped rows below instead (Math.max of
@@ -624,7 +739,8 @@ async function getTeamGameScorecard(teamGameId, teamNumber, side) {
     // glance which score got double-counted each hole — confirmed with the user (2026-07-09), purely
     // a display aid, never written to TeamGamePlayer or counted separately in getTeamGameResults.
     const realPlayerCount = byPlayer.size;
-    const maxPadCount = Math.max(0, ...Array.from(byHole.values()).map((ids) => maxRosterSize - ids.length));
+    // No padding for 36/48 -- see the matching note in getTeamGameResults.
+    const maxPadCount = usesLiveKeepPicker ? 0 : Math.max(0, ...Array.from(byHole.values()).map((ids) => maxRosterSize - ids.length));
     const ghostRows = Array.from({ length: maxPadCount }, (_, g) => ({
         name: `Ghost Player ${realPlayerCount + g + 1}`,
         holes: {},
@@ -634,7 +750,7 @@ async function getTeamGameScorecard(teamGameId, teamNumber, side) {
     const lastHole = lastHoleAll ? trueLastHole : null;
     const holeTotals = {};
     for (const [holeId, presentIds] of byHole) {
-        const padCount = Math.max(0, maxRosterSize - presentIds.length);
+        const padCount = usesLiveKeepPicker ? 0 : Math.max(0, maxRosterSize - presentIds.length);
         const picked = pickPadPlayerIds(teamGameId, teamNumber, holeId, presentIds, padCount);
         picked.forEach((pickedId, i) => {
             byPlayer.get(pickedId)?.paddedHoles.push(holeId);
@@ -646,8 +762,440 @@ async function getTeamGameScorecard(teamGameId, teamNumber, side) {
         });
         const nets = [...presentIds, ...picked].map((pid) => byPlayer.get(pid).holes[holeId]);
         const sorted = nets.slice().sort((a, b) => a - b);
-        const kept = holeId === lastHole ? sorted : sorted.slice(0, keepCount);
+        let kept;
+        if (usesLiveKeepPicker) {
+            const chosen = holeKeep.get(holeId);
+            kept = chosen !== undefined ? sorted.slice(0, chosen) : sorted;
+        }
+        else {
+            const effectiveKeepCount = isIrishFormat(format) ? (0, teamKeep_1.irishRumbleKeepCountForHole)(holeId) : keepCount;
+            kept = holeId === lastHole ? sorted : sorted.slice(0, effectiveKeepCount);
+        }
         holeTotals[holeId] = kept.reduce((sum, s) => sum + s, 0);
     }
     return { rows: [...Array.from(byPlayer.values()), ...ghostRows], holeTotals };
+}
+/**
+ * Every 36/48-format team game this exact foursome is registered as one team in, for a given
+ * game — app/game.tsx calls this once per round (using its own pid1-4) to know whether it needs
+ * to show the live "keep how many" prompt at all, and if so for which team game(s). "This exact
+ * foursome" means every one of that team's rostered players is present in the submitted player
+ * list — a partial overlap (e.g. a short-handed Playing Partner Teams pad scenario) doesn't
+ * count as a match, since the prompt is meant for the real, physically-present team making the
+ * decision together, not a borrowed/padded roster.
+ */
+async function getKeepFormatTeamsForPlayers(gameId, playerIds) {
+    if (playerIds.length === 0)
+        return [];
+    const [rows] = await config_1.default.query(`SELECT tg.TeamGameID, tg.Format, tg.Label, tgp.TeamNumber, tgp.PlayerID
+     FROM TeamGame tg
+     INNER JOIN TeamGamePlayer tgp ON tgp.TeamGameID = tg.TeamGameID
+     WHERE tg.GameID = ? AND tg.Format IN ('36/48', '36', '48')`, [gameId]);
+    const byTeam = new Map();
+    for (const r of rows) {
+        const k = `${r.TeamGameID}-${r.TeamNumber}`;
+        if (!byTeam.has(k)) {
+            byTeam.set(k, {
+                teamGameId: r.TeamGameID,
+                teamNumber: r.TeamNumber,
+                label: r.Label,
+                playerIds: new Set(),
+            });
+        }
+        byTeam.get(k).playerIds.add(r.PlayerID);
+    }
+    const inputSet = new Set(playerIds);
+    const result = [];
+    for (const team of byTeam.values()) {
+        const isMatch = team.playerIds.size > 0 && [...team.playerIds].every((pid) => inputSet.has(pid));
+        if (isMatch) {
+            const teamSize = team.playerIds.size;
+            result.push({
+                teamGameId: team.teamGameId,
+                teamNumber: team.teamNumber,
+                teamSize,
+                target: (0, teamKeep_1.targetForTeamSize)(teamSize),
+                label: team.label,
+            });
+        }
+    }
+    return result;
+}
+/**
+ * Every Irish Rumble team game this exact foursome is registered as one team in, for a given
+ * game -- app/game.tsx calls this once per round (using its own pid1-4) to know whether to show
+ * the live per-hole score card, mirrors getKeepFormatTeamsForPlayers's exact-match rule (every
+ * one of the team's rostered players must be present in the submitted list).
+ */
+async function getIrishRumbleTeamsForPlayers(gameId, playerIds) {
+    if (playerIds.length === 0)
+        return [];
+    const [rows] = await config_1.default.query(`SELECT tg.TeamGameID, tg.Label, tgp.TeamNumber, tgp.PlayerID
+     FROM TeamGame tg
+     INNER JOIN TeamGamePlayer tgp ON tgp.TeamGameID = tg.TeamGameID
+     WHERE tg.GameID = ? AND tg.Format = ?`, [gameId, teamKeep_1.IRISH_RUMBLE_FORMAT]);
+    const byTeam = new Map();
+    for (const r of rows) {
+        const k = `${r.TeamGameID}-${r.TeamNumber}`;
+        if (!byTeam.has(k)) {
+            byTeam.set(k, { teamGameId: r.TeamGameID, teamNumber: r.TeamNumber, label: r.Label, playerIds: new Set() });
+        }
+        byTeam.get(k).playerIds.add(r.PlayerID);
+    }
+    const inputSet = new Set(playerIds);
+    const result = [];
+    for (const team of byTeam.values()) {
+        const isMatch = team.playerIds.size > 0 && [...team.playerIds].every((pid) => inputSet.has(pid));
+        if (isMatch) {
+            result.push({
+                teamGameId: team.teamGameId,
+                teamNumber: team.teamNumber,
+                label: team.label,
+                playerIds: [...team.playerIds],
+            });
+        }
+    }
+    return result;
+}
+/** A team's already-recorded live keep choices, keyed by HoleID -- what's already been decided
+ * so far this round, for the live prompt to resume from and total up. */
+async function getTeamGameHoleKeepCounts(teamGameId, teamNumber) {
+    const [rows] = await config_1.default.query('SELECT HoleID, KeepCount FROM TeamGameHoleKeep WHERE TeamGameID = ? AND TeamNumber = ?', [teamGameId, teamNumber]);
+    const result = {};
+    for (const r of rows)
+        result[r.HoleID] = r.KeepCount;
+    return result;
+}
+/**
+ * Save one hole's live keep-count choice for a 36/48-format team — re-validates against
+ * computeValidKeepChoices server-side (the same function the live picker itself uses to grey out
+ * invalid buttons) before writing anything, so a stale or tampered request can't record a choice
+ * that would make the round's target unreachable. `holesRemainingIncludingThisOne` comes from the
+ * caller (app/game.tsx knows the round's actual hole range -- 18h/9f/9b -- this service doesn't).
+ */
+async function saveTeamGameHoleKeepCount(teamGameId, teamNumber, holeId, keepCount, holesRemainingIncludingThisOne) {
+    const [tgRows] = await config_1.default.query('SELECT Format FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
+    if (tgRows.length === 0)
+        return { ok: false, error: 'Team game not found.' };
+    const format = tgRows[0].Format;
+    if (!isKeepFormat(format))
+        return { ok: false, error: 'This team game is not a 36/48 format.' };
+    // Team size is always this specific team's actual headcount, not a value fixed in advance.
+    const [rosterRows] = await config_1.default.query('SELECT COUNT(DISTINCT PlayerID) AS cnt FROM TeamGamePlayer WHERE TeamGameID = ? AND TeamNumber = ?', [teamGameId, teamNumber]);
+    const teamSize = Number(rosterRows[0]?.cnt) || 0;
+    const target = (0, teamKeep_1.targetForTeamSize)(teamSize);
+    const [otherRows] = await config_1.default.query('SELECT KeepCount FROM TeamGameHoleKeep WHERE TeamGameID = ? AND TeamNumber = ? AND HoleID != ?', [teamGameId, teamNumber, holeId]);
+    const keptOnOtherHoles = otherRows.reduce((sum, r) => sum + Number(r.KeepCount), 0);
+    const validChoices = (0, teamKeep_1.computeValidKeepChoices)(teamSize, target, keptOnOtherHoles, holesRemainingIncludingThisOne);
+    if (!validChoices.includes(keepCount)) {
+        return { ok: false, error: `${keepCount} isn't a valid choice for this hole.` };
+    }
+    await config_1.default.query(`INSERT INTO TeamGameHoleKeep (TeamGameID, TeamNumber, HoleID, KeepCount, LastUpdateUser)
+     VALUES (?, ?, ?, ?, 'App')
+     ON DUPLICATE KEY UPDATE KeepCount = VALUES(KeepCount), LastUpdateDt = CURRENT_TIMESTAMP, LastUpdateUser = VALUES(LastUpdateUser)`, [teamGameId, teamNumber, holeId, keepCount]);
+    return { ok: true };
+}
+/**
+ * Live standings for every team in a 36/48 team game: holes finished, net score vs. par so far
+ * (using each hole's actual live-chosen keep count, same reduction getTeamGameResults uses), and
+ * how many of the target's net scores they've used up. Empty for a 'custom'-format team game --
+ * this view only makes sense where there's a live per-hole choice and a fixed target to track.
+ */
+async function getTeamGameLiveLeaderboard(teamGameId) {
+    const [tgRows] = await config_1.default.query('SELECT GameID, Format FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
+    if (tgRows.length === 0)
+        return [];
+    const gameId = tgRows[0].GameID;
+    const format = tgRows[0].Format;
+    if (!isKeepFormat(format))
+        return [];
+    const [gameRows] = await config_1.default.query('SELECT CourseID FROM Game WHERE GameID = ?', [gameId]);
+    const courseId = gameRows[0]?.CourseID;
+    const [holeRows] = await config_1.default.query('SELECT HoleNum, Par FROM CourseDetails WHERE CourseID = ?', [courseId]);
+    const parByHole = new Map(holeRows.map((h) => [h.HoleNum, h.Par]));
+    const [keepRows] = await config_1.default.query('SELECT TeamNumber, HoleID, KeepCount FROM TeamGameHoleKeep WHERE TeamGameID = ?', [teamGameId]);
+    const keepByTeam = new Map();
+    for (const r of keepRows) {
+        if (!keepByTeam.has(r.TeamNumber))
+            keepByTeam.set(r.TeamNumber, new Map());
+        keepByTeam.get(r.TeamNumber).set(r.HoleID, r.KeepCount);
+    }
+    const [rosterRows] = await config_1.default.query(`SELECT tgp.TeamNumber, CONCAT(p.LastName, ', ', p.FirstName) AS name
+     FROM TeamGamePlayer tgp INNER JOIN Player p ON p.PlayerID = tgp.PlayerID
+     WHERE tgp.TeamGameID = ? ORDER BY tgp.TeamNumber, p.LastName, p.FirstName`, [teamGameId]);
+    const rosterByTeam = new Map();
+    for (const r of rosterRows) {
+        if (!rosterByTeam.has(r.TeamNumber))
+            rosterByTeam.set(r.TeamNumber, []);
+        rosterByTeam.get(r.TeamNumber).push(r.name);
+    }
+    const [scoreRows] = await config_1.default.query(`SELECT tgp.TeamNumber, s.HoleID, s.NetScore
+     FROM TeamGamePlayer tgp
+     INNER JOIN Score s ON s.PlayerID = tgp.PlayerID AND s.GameID = ?
+     WHERE tgp.TeamGameID = ?`, [gameId, teamGameId]);
+    const netByTeamHole = new Map();
+    for (const r of scoreRows) {
+        if (!netByTeamHole.has(r.TeamNumber))
+            netByTeamHole.set(r.TeamNumber, new Map());
+        const perHole = netByTeamHole.get(r.TeamNumber);
+        if (!perHole.has(r.HoleID))
+            perHole.set(r.HoleID, []);
+        perHole.get(r.HoleID).push(Number(r.NetScore));
+    }
+    /** Score-vs-par plus kept count for whichever holes pass `holeFilter` -- a bare score never
+     * means anything alone for this format (two teams' totals aren't comparable without knowing
+     * how many scores each is built from), so every figure always carries its kept count with it. */
+    function computeSide(keepMap, netMap, holeFilter) {
+        let netTotal = 0;
+        let parTotal = 0;
+        let kept = 0;
+        for (const [holeId, keepCount] of keepMap) {
+            if (!holeFilter(holeId))
+                continue;
+            const sortedNets = (netMap.get(holeId) || []).slice().sort((a, b) => a - b);
+            netTotal += sortedNets.slice(0, keepCount).reduce((sum, n) => sum + n, 0);
+            // netTotal sums `keepCount` net scores for this hole, so par has to be counted the same
+            // number of times -- comparing N kept scores against a single hole's par once (not N
+            // times) was the bug: it made the total balloon further off with every hole a team kept
+            // more than one score on, instead of tracking true cumulative over/under (confirmed real
+            // case 2026-07-24: a team sitting around -2 through several holes showed +106 by hole 18).
+            parTotal += (parByHole.get(holeId) ?? 0) * keepCount;
+            kept += keepCount;
+        }
+        // No holes decided yet naturally computes to 0 - 0 = Even, which is exactly right here (not
+        // a placeholder dash): a team that hasn't started owes nothing yet, same as one already
+        // sitting dead even.
+        const diff = netTotal - parTotal;
+        const score = diff === 0 ? 'Even' : diff > 0 ? `+${diff}` : `${diff}`;
+        return { score, kept };
+    }
+    const teamNumbers = new Set([...rosterByTeam.keys(), ...keepByTeam.keys()]);
+    const result = Array.from(teamNumbers)
+        .sort((a, b) => a - b)
+        .map((teamNumber) => {
+        const keepMap = keepByTeam.get(teamNumber) || new Map();
+        const netMap = netByTeamHole.get(teamNumber) || new Map();
+        const front = computeSide(keepMap, netMap, (h) => h <= 9);
+        const back = computeSide(keepMap, netMap, (h) => h > 9);
+        const total = computeSide(keepMap, netMap, () => true);
+        const players = rosterByTeam.get(teamNumber) || [];
+        return { teamNumber, players, thru: keepMap.size, front, back, total, target: (0, teamKeep_1.targetForTeamSize)(players.length) };
+    });
+    // Sort by total score (lower/better first); teams with no holes finished yet sink to the bottom.
+    return result.sort((a, b) => {
+        if (a.thru === 0 && b.thru === 0)
+            return a.teamNumber - b.teamNumber;
+        if (a.thru === 0)
+            return 1;
+        if (b.thru === 0)
+            return -1;
+        const aDiff = a.total.score === 'Even' ? 0 : parseInt(a.total.score, 10);
+        const bDiff = b.total.score === 'Even' ? 0 : parseInt(b.total.score, 10);
+        return aDiff - bDiff;
+    });
+}
+/**
+ * Live standings for every team in an Irish Rumble team game: holes finished and net score vs.
+ * par so far, using the same fixed hole-range keep rule and padding-for-a-short-handed-group
+ * getTeamGameResults uses. Empty for anything but an 'irish'-format team game.
+ */
+async function getIrishRumbleLiveLeaderboard(teamGameId) {
+    const [tgRows] = await config_1.default.query('SELECT GameID, Format FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
+    if (tgRows.length === 0)
+        return [];
+    const gameId = tgRows[0].GameID;
+    const format = tgRows[0].Format;
+    if (!isIrishFormat(format))
+        return [];
+    const maxRosterSize = await getMaxRosterSize(teamGameId);
+    const [gameRows] = await config_1.default.query('SELECT CourseID FROM Game WHERE GameID = ?', [gameId]);
+    const courseId = gameRows[0]?.CourseID;
+    const [holeRows] = await config_1.default.query('SELECT HoleNum, Par FROM CourseDetails WHERE CourseID = ?', [courseId]);
+    const parByHole = new Map(holeRows.map((h) => [h.HoleNum, h.Par]));
+    const [rosterRows] = await config_1.default.query(`SELECT tgp.TeamNumber, CONCAT(p.LastName, ', ', p.FirstName) AS name
+     FROM TeamGamePlayer tgp INNER JOIN Player p ON p.PlayerID = tgp.PlayerID
+     WHERE tgp.TeamGameID = ? ORDER BY tgp.TeamNumber, p.LastName, p.FirstName`, [teamGameId]);
+    const rosterByTeam = new Map();
+    for (const r of rosterRows) {
+        if (!rosterByTeam.has(r.TeamNumber))
+            rosterByTeam.set(r.TeamNumber, []);
+        rosterByTeam.get(r.TeamNumber).push(r.name);
+    }
+    const [scoreRows] = await config_1.default.query(`SELECT tgp.TeamNumber, tgp.PlayerID, s.HoleID, s.NetScore
+     FROM TeamGamePlayer tgp
+     INNER JOIN Score s ON s.PlayerID = tgp.PlayerID AND s.GameID = ?
+     WHERE tgp.TeamGameID = ?`, [gameId, teamGameId]);
+    const holeScores = new Map();
+    for (const r of scoreRows) {
+        if (!holeScores.has(r.TeamNumber))
+            holeScores.set(r.TeamNumber, new Map());
+        const perHole = holeScores.get(r.TeamNumber);
+        if (!perHole.has(r.HoleID))
+            perHole.set(r.HoleID, []);
+        perHole.get(r.HoleID).push({ playerId: r.PlayerID, net: Number(r.NetScore) });
+    }
+    const teamNumbers = new Set([...rosterByTeam.keys(), ...holeScores.keys()]);
+    /** Net-vs-par for whichever holes pass `holeFilter`, applying the same padding + fixed
+     * hole-range keep rule getTeamGameResults uses. */
+    function computeSide(teamGameId, teamNumber, perHole, holeFilter) {
+        let netTotal = 0;
+        let parTotal = 0;
+        for (const [holeId, present] of perHole) {
+            if (!holeFilter(holeId) || present.length === 0)
+                continue;
+            const nets = present.map((p) => p.net);
+            const padCount = Math.max(0, maxRosterSize - present.length);
+            if (padCount > 0) {
+                const presentIds = present.map((p) => p.playerId);
+                for (const pickedId of pickPadPlayerIds(teamGameId, teamNumber, holeId, presentIds, padCount)) {
+                    nets.push(present.find((p) => p.playerId === pickedId).net);
+                }
+            }
+            const sorted = nets.sort((a, b) => a - b);
+            const keepCount = (0, teamKeep_1.irishRumbleKeepCountForHole)(holeId);
+            const kept = sorted.slice(0, keepCount);
+            netTotal += kept.reduce((sum, s) => sum + s, 0);
+            parTotal += (parByHole.get(holeId) ?? 0) * kept.length;
+        }
+        const diff = netTotal - parTotal;
+        return diff === 0 ? 'Even' : diff > 0 ? `+${diff}` : `${diff}`;
+    }
+    const result = Array.from(teamNumbers)
+        .sort((a, b) => a - b)
+        .map((teamNumber) => {
+        const perHole = holeScores.get(teamNumber) || new Map();
+        const thru = Array.from(perHole.values()).filter((present) => present.length > 0).length;
+        const front = computeSide(teamGameId, teamNumber, perHole, (h) => h <= 9);
+        const back = computeSide(teamGameId, teamNumber, perHole, (h) => h > 9);
+        const score = computeSide(teamGameId, teamNumber, perHole, () => true);
+        return { teamNumber, players: rosterByTeam.get(teamNumber) || [], thru, score, front, back };
+    });
+    // Sort by score (lower/better first); teams with no holes finished yet sink to the bottom.
+    return result.sort((a, b) => {
+        if (a.thru === 0 && b.thru === 0)
+            return a.teamNumber - b.teamNumber;
+        if (a.thru === 0)
+            return 1;
+        if (b.thru === 0)
+            return -1;
+        const aDiff = a.score === 'Even' ? 0 : parseInt(a.score, 10);
+        const bDiff = b.score === 'Even' ? 0 : parseInt(b.score, 10);
+        return aDiff - bDiff;
+    });
+}
+/** A past week that had at least one 36/48 team game with a rostered, scored player -- for the
+ * Best Possible screen's week picker, so it only ever offers weeks the feature can actually run
+ * against instead of every week with any score and then saying "not eligible" after the pick. */
+async function getBestPossibleWeeks(eventId) {
+    const [rows] = await config_1.default.query(`SELECT DISTINCT g.GameID, g.GameDate
+     FROM Game g
+     INNER JOIN TeamGame tg ON tg.GameID = g.GameID
+     INNER JOIN TeamGamePlayer tgp ON tgp.TeamGameID = tg.TeamGameID
+     INNER JOIN Score s ON s.GameID = g.GameID AND s.PlayerID = tgp.PlayerID
+     WHERE g.GroupID = ? AND tg.Format IN ('36/48', '36', '48')
+     ORDER BY g.GameDate DESC`, [eventId]);
+    return rows.map((r) => ({ gameId: r.GameID, gameDate: r.GameDate }));
+}
+/**
+ * The best possible score every team in a 36/48 team game could have produced with perfect
+ * hindsight, against what each actually scored. Flatten every net score a team's real roster (no
+ * padding -- see the note on getTeamGameResults) shot across every hole into one list, but rank
+ * each by its value *relative to that hole's own par* (net - par), not by raw net -- holes have
+ * different pars (3/4/5), so a net 4 on a par 5 is a great score while a net 4 on a par 3 is a
+ * poor one, and raw net can't distinguish them. Sort by that relative value and take the lowest
+ * `target` of them; their sum is already the +/- to par directly, no separate par-weighting step
+ * needed. (Fixed 2026-07-24: an earlier version sorted by raw net, which could rank a mediocre
+ * score on a low-par hole above a great score on a high-par hole -- caught because it let a
+ * team's "best possible" come out worse than what they actually scored, which is impossible for
+ * a true hindsight optimum.) Confirmed with Matt 2026-07-24: this is meant to only ever be
+ * checked post-round -- an in-progress round simply won't have `target` scores to draw from yet,
+ * so the comparison degrades to "best of what's been played so far" rather than erroring, but the
+ * UI should only offer this once a round is done. Shown for every team in the game at once, not
+ * one team at a time -- this never re-pairs anyone, it only re-picks which of a fixed team's own
+ * scores count.
+ */
+async function getTeamBestPossible(teamGameId) {
+    const [tgRows] = await config_1.default.query('SELECT GameID, Format FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
+    if (tgRows.length === 0)
+        return [];
+    const gameId = tgRows[0].GameID;
+    const format = tgRows[0].Format;
+    if (!isKeepFormat(format))
+        return [];
+    const [rosterRows] = await config_1.default.query(`SELECT tgp.TeamNumber, tgp.PlayerID, CONCAT(p.LastName, ', ', p.FirstName) AS name
+     FROM TeamGamePlayer tgp
+     INNER JOIN Player p ON p.PlayerID = tgp.PlayerID
+     WHERE tgp.TeamGameID = ?
+     ORDER BY tgp.TeamNumber, p.LastName, p.FirstName`, [teamGameId]);
+    if (rosterRows.length === 0)
+        return [];
+    const playersByTeam = new Map();
+    for (const r of rosterRows) {
+        if (!playersByTeam.has(r.TeamNumber))
+            playersByTeam.set(r.TeamNumber, []);
+        playersByTeam.get(r.TeamNumber).push({ playerId: r.PlayerID, name: r.name });
+    }
+    const allPlayerIds = [...new Set(rosterRows.map((r) => r.PlayerID))];
+    const [gameRows] = await config_1.default.query('SELECT CourseID FROM Game WHERE GameID = ?', [gameId]);
+    const courseId = gameRows[0]?.CourseID;
+    const [holeRows] = await config_1.default.query('SELECT HoleNum, Par FROM CourseDetails WHERE CourseID = ?', [courseId]);
+    const parByHole = new Map(holeRows.map((h) => [h.HoleNum, h.Par]));
+    const [scoreRows] = await config_1.default.query('SELECT PlayerID, HoleID, NetScore FROM Score WHERE GameID = ? AND PlayerID IN (?)', [gameId, allPlayerIds]);
+    const netsByPlayer = new Map();
+    for (const r of scoreRows) {
+        if (!netsByPlayer.has(r.PlayerID))
+            netsByPlayer.set(r.PlayerID, []);
+        netsByPlayer.get(r.PlayerID).push({ holeId: r.HoleID, net: Number(r.NetScore) });
+    }
+    const [keepRows] = await config_1.default.query('SELECT TeamNumber, HoleID, KeepCount FROM TeamGameHoleKeep WHERE TeamGameID = ?', [teamGameId]);
+    const keepByTeam = new Map();
+    for (const r of keepRows) {
+        if (!keepByTeam.has(r.TeamNumber))
+            keepByTeam.set(r.TeamNumber, []);
+        keepByTeam.get(r.TeamNumber).push({ holeId: r.HoleID, keepCount: r.KeepCount });
+    }
+    function scoreVsPar(totalNet, totalPar) {
+        const diff = totalNet - totalPar;
+        return diff === 0 ? 'Even' : diff > 0 ? `+${diff}` : `${diff}`;
+    }
+    const results = [];
+    for (const [teamNumber, teamPlayers] of playersByTeam) {
+        const teamSize = teamPlayers.length;
+        const target = (0, teamKeep_1.targetForTeamSize)(teamSize);
+        const allDiffs = [];
+        const netsByHole = new Map();
+        for (const { playerId } of teamPlayers) {
+            for (const { holeId, net } of netsByPlayer.get(playerId) || []) {
+                allDiffs.push(net - (parByHole.get(holeId) ?? 0));
+                if (!netsByHole.has(holeId))
+                    netsByHole.set(holeId, []);
+                netsByHole.get(holeId).push(net);
+            }
+        }
+        // Actual: whatever the team really chose to keep, hole by hole.
+        let actualNet = 0;
+        let actualPar = 0;
+        for (const r of keepByTeam.get(teamNumber) || []) {
+            const sorted = (netsByHole.get(r.holeId) || []).slice().sort((a, b) => a - b);
+            actualNet += sorted.slice(0, r.keepCount).reduce((sum, n) => sum + n, 0);
+            actualPar += (parByHole.get(r.holeId) ?? 0) * r.keepCount;
+        }
+        // Best possible: the globally lowest `target` scores relative to their own hole's par --
+        // NOT the lowest raw net scores, since holes have different pars (a net 4 on a par 5 is a
+        // great score, a net 4 on a par 3 is a poor one, and raw net can't tell them apart).
+        const bestDiffSum = allDiffs.slice().sort((a, b) => a - b).slice(0, target).reduce((sum, d) => sum + d, 0);
+        results.push({
+            teamNumber,
+            players: teamPlayers.map((p) => p.name),
+            teamSize,
+            target,
+            actualScore: scoreVsPar(actualNet, actualPar),
+            bestScore: scoreVsPar(bestDiffSum, 0),
+            bestDiffSum,
+        });
+    }
+    // Best possible first (lowest/best relative-to-par sum), ties broken by team number.
+    return results
+        .sort((a, b) => a.bestDiffSum - b.bestDiffSum || a.teamNumber - b.teamNumber)
+        .map(({ bestDiffSum, ...rest }) => rest);
 }

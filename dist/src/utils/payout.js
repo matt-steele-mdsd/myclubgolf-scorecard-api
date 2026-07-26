@@ -7,7 +7,10 @@ exports.computeTiePayouts = computeTiePayouts;
  * falling back to an equal split across places when no percentage has been set for any of them.
  */
 function computePlaceAmounts(pot, places, pctStrings) {
-    const clampedPlaces = Math.max(0, Math.min(4, places));
+    // No fixed max here beyond a generous sanity rail -- the event-level Options screen still only
+    // offers up to 4 places, but Week Results' per-game payout override can pay up to 10, so this
+    // stays uncapped rather than hardcoding 4.
+    const clampedPlaces = Math.max(0, Math.min(20, places));
     if (clampedPlaces === 0 || pot <= 0)
         return [];
     const pcts = pctStrings.slice(0, clampedPlaces).map((s) => {

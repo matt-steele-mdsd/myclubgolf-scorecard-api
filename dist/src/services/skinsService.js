@@ -136,18 +136,33 @@ async function findFollowUpHole(gameId, holeId) {
  * value back into Score.SkinsScore for every player on this hole, so the Scorecard-by-Skins-type
  * view and the Leaderboard's own SkinsScore sum (both read that stored column directly) self-heal
  * too, regardless of how the underlying Score rows were written.
+ *
+ * `context`: when `recalculateAllSkins` already has the Game row and event Options in hand (the
+ * same for every hole in the game), it passes them in here so each hole skips re-fetching them —
+ * confirmed real savings on a 40+-player field where every hole was independently re-querying the
+ * identical Game/Options rows. Omitted by every other caller (the single-hole live view), which
+ * fetches them itself same as before.
  */
-async function getSkinsForHole(gameId, holeId) {
+async function getSkinsForHole(gameId, holeId, context) {
     await config_1.default.query('DELETE FROM Skins WHERE GameID = ? AND HoleID = ?', [gameId, holeId]);
-    const [gameRows] = await config_1.default.query('SELECT GroupID, CourseID, GameDate FROM Game WHERE GameID = ?', [gameId]);
-    if (gameRows.length === 0)
-        return { rows: [], validation: null };
-    const { GroupID: groupId, CourseID: courseId, GameDate: gameDate } = gameRows[0];
+    let groupId;
+    let courseId;
+    let gameDate;
+    let options;
+    if (context) {
+        ({ groupId, courseId, gameDate, options } = context);
+    }
+    else {
+        const [gameRows] = await config_1.default.query('SELECT GroupID, CourseID, GameDate FROM Game WHERE GameID = ?', [gameId]);
+        if (gameRows.length === 0)
+            return { rows: [], validation: null };
+        ({ GroupID: groupId, CourseID: courseId, GameDate: gameDate } = gameRows[0]);
+        options = await (0, optionsService_1.getEventOptions)(groupId);
+    }
     const [holeRows] = await config_1.default.query('SELECT Par, Hdcp FROM CourseDetails WHERE CourseID = ? AND HoleNum = ?', [courseId, holeId]);
     if (holeRows.length === 0)
         return { rows: [], validation: null };
     const { Par: par, Hdcp: holeHdcp } = holeRows[0];
-    const options = await (0, optionsService_1.getEventOptions)(groupId);
     const modes = resolveSkinsModes(options);
     const [scoreRows] = await config_1.default.query(`SELECT p.PlayerID, CONCAT(p.LastName, ', ', p.FirstName) AS name, s.Score, s.NetScore
      FROM Score s
@@ -185,12 +200,12 @@ async function getSkinsForHole(gameId, holeId) {
         if (mode === 'none') {
             // No follow-up check required — it's a skin outright.
             await config_1.default.query(`INSERT INTO Skins (GroupID, GameID, HoleID, PlayerID, Score, NetScore, Validated, LastUpdateUser)
-         VALUES (1, ?, ?, ?, ?, ?, 'T', 'App')
+         VALUES (?, ?, ?, ?, ?, ?, 'T', 'App')
          ON DUPLICATE KEY UPDATE
            PlayerID = VALUES(PlayerID),
            Score = VALUES(Score),
            NetScore = VALUES(NetScore),
-           Validated = VALUES(Validated)`, [gameId, holeId, winner.PlayerID, winner.Score, winner.NetScore]);
+           Validated = VALUES(Validated)`, [groupId, gameId, holeId, winner.PlayerID, winner.Score, winner.NetScore]);
             result.validation = { mode: 'none', validated: true };
         }
         else {
@@ -227,12 +242,12 @@ async function getSkinsForHole(gameId, holeId) {
                     }
                 }
                 await config_1.default.query(`INSERT INTO Skins (GroupID, GameID, HoleID, PlayerID, Score, NetScore, Validated, LastUpdateUser)
-           VALUES (1, ?, ?, ?, ?, ?, ?, 'App')
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'App')
            ON DUPLICATE KEY UPDATE
              PlayerID = VALUES(PlayerID),
              Score = VALUES(Score),
              NetScore = VALUES(NetScore),
-             Validated = VALUES(Validated)`, [gameId, holeId, winner.PlayerID, winner.Score, winner.NetScore, validated ? 'T' : 'F']);
+             Validated = VALUES(Validated)`, [groupId, gameId, holeId, winner.PlayerID, winner.Score, winner.NetScore, validated ? 'T' : 'F']);
                 result.validation = {
                     mode,
                     validated,
@@ -271,14 +286,42 @@ async function invalidateSkinsCache(gameId) {
  * 44-player field), and most opens of Summary happen with nothing having changed since the last
  * one. `getSkinsForHole` itself (the single-hole live view during play) is unaffected — it
  * always computes fresh, since that has to be responsive as someone enters a score right now.
+ *
+ * When a recompute IS needed, every hole's `getSkinsForHole` runs concurrently (`Promise.all`)
+ * rather than one at a time — each hole only ever touches its own `Skins`/`Score.SkinsScore`
+ * rows (keyed by HoleID), so there's no cross-hole write ordering to preserve. The Game row and
+ * event Options are also fetched once here and handed to every hole via `SkinsHoleContext`,
+ * instead of each of the up-to-18 holes independently re-querying the identical rows (confirmed
+ * real 2026-07-19: this was the other big chunk of the ~9s, on top of the sequential-await cost).
  */
 async function recalculateAllSkins(gameId) {
     const [[status]] = await config_1.default.query('SELECT GameID FROM SkinsCalcStatus WHERE GameID = ?', [gameId]);
     if (status)
         return;
+    const [gameRows] = await config_1.default.query('SELECT GroupID, CourseID, GameDate FROM Game WHERE GameID = ?', [gameId]);
+    if (gameRows.length === 0)
+        return;
+    const { GroupID: groupId, CourseID: courseId, GameDate: gameDate } = gameRows[0];
+    const options = await (0, optionsService_1.getEventOptions)(groupId);
+    const context = { groupId, courseId, gameDate, options };
+    // One bad hole (bad data, a transient DB hiccup, whatever) must not take down every other
+    // hole's result with it -- Promise.all rejects the whole batch the instant any single promise
+    // rejects, which left one hole's row deleted-but-never-reinserted (getSkinsForHole deletes its
+    // hole's row before recomputing) while ALSO throwing before SkinsCalcStatus ever got marked,
+    // so the next Summary open retried from scratch and hit the exact same failure every time --
+    // confirmed real case 2026-07-26: hole 7 alone came back empty, live during a real event.
+    // allSettled + a per-hole try/catch means a failing hole just logs and stays whatever it last
+    // was, while every other hole (and SkinsCalcStatus) still completes normally.
     const holes = await getScoredHoles(gameId);
-    for (const holeId of holes) {
-        await getSkinsForHole(gameId, holeId);
+    const results = await Promise.allSettled(holes.map((holeId) => getSkinsForHole(gameId, holeId, context).catch((error) => {
+        console.error(`Error recalculating skins for GameID ${gameId}, HoleID ${holeId}:`, error);
+        throw error;
+    })));
+    const failedHoles = results
+        .map((r, i) => (r.status === 'rejected' ? holes[i] : null))
+        .filter((h) => h !== null);
+    if (failedHoles.length > 0) {
+        console.error(`Skins recalculation failed for GameID ${gameId}, holes: ${failedHoles.join(', ')}`);
     }
     await config_1.default.query('INSERT INTO SkinsCalcStatus (GameID, CalculatedAt) VALUES (?, NOW()) ON DUPLICATE KEY UPDATE CalculatedAt = NOW()', [gameId]);
 }

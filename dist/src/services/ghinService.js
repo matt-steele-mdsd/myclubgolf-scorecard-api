@@ -167,16 +167,7 @@ async function getGhinSummary(eventId, year) {
 // behalf — mirrors search_ghin.php, which hardcodes the same account the same way.
 const GHIN_LOGIN_NUMBER = '4240722';
 const GHIN_LOGIN_PASSWORD = 'Ohiostate1';
-// Cached in-memory rather than logging in on every call — a busy Start Game session (or a bulk
-// Check Easy Links run) used to log in once per player, back-to-back, which is enough to get the
-// shared GHIN account rate-limited (403 Forbidden on the login endpoint itself, confirmed against
-// RyderCup's identical account 2026-07-11). 20 minutes is well under GHIN's own session lifetime.
-let cachedToken = null;
-const TOKEN_CACHE_MS = 20 * 60 * 1000;
 async function getGhinBearerToken() {
-    if (cachedToken && cachedToken.expiresAt > Date.now()) {
-        return cachedToken.token;
-    }
     const response = await fetch('https://ghin-apiproxy.usga.org/api/v1/golfer_login.json', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json' },
@@ -186,9 +177,7 @@ async function getGhinBearerToken() {
         }),
     });
     const data = (await response.json());
-    const token = data.golfer_user.golfer_user_token;
-    cachedToken = { token, expiresAt: Date.now() + TOKEN_CACHE_MS };
-    return token;
+    return data.golfer_user.golfer_user_token;
 }
 /**
  * Search the real GHIN Network for golfers by name (and optionally state) — mirrors
@@ -584,12 +573,13 @@ async function getGolferIndex(ghin, token) {
 /**
  * Refresh every GHIN-linked player's cached index (`Player.GHINIndex`/`GHINIndexUpdatedDt`) —
  * ported from RyderCup's `refreshGhinHandicaps`. Meant to be called fire-and-forget on app
- * launch (see `app/_layout.tsx`), not from Start Game: the SQL filter below is what keeps every
- * visitor's app open from triggering its own round of real GHIN API calls — only players not yet
- * refreshed today are selected, and when that's nobody, this returns without ever fetching a
- * bearer token or calling GHIN at all. Built specifically to get GHIN off Start Game's live path
- * (2026-07 — pounding GHIN with a live index+teeset lookup per player click was a real cause of
- * problems during the 41-player test event).
+ * launch (see `app/_layout.tsx`) and by the nightly 4am cron (`refresh_handicaps.py` ->
+ * `POST /api/ghin/refresh-indexes`), not from Start Game: the SQL filter below is what keeps
+ * every visitor's app open from triggering its own round of real GHIN API calls — only players
+ * not yet refreshed today are selected, and when that's nobody, this returns without ever
+ * fetching a bearer token or calling GHIN at all. Built specifically to get GHIN off Start
+ * Game's live path (2026-07 — pounding GHIN with a live index+teeset lookup per player click was
+ * a real cause of problems during the 41-player test event).
  *
  * `force` skips the "already refreshed today" filter and re-pulls every GHIN-linked player
  * regardless — for a future manual "Refresh GHIN" admin action, same as RyderCup's.
@@ -689,9 +679,9 @@ async function getGhinCourseDetail(courseId) {
  * Both the index and the course's tee sets are read from local caches first, so this almost
  * never hits GHIN live:
  * - The index comes from `Player.GHINIndex` when `refreshGhinIndexes` already refreshed it today
- *   (the normal case — that runs fire-and-forget on app launch). Falls back to a live per-player
- *   fetch (and backfills the cache) only when today's cache is missing — e.g. a player linked
- *   after this morning's refresh already ran.
+ *   (the normal case — that runs fire-and-forget on app launch and via the nightly 4am cron).
+ *   Falls back to a live per-player fetch (and backfills the cache) only when today's cache is
+ *   missing — e.g. a player linked after this morning's refresh already ran.
  * - The tee sets come from `CourseTeeSet`/`CourseTeeHole` (cached at Add Course time, see
  *   `saveCourseTeeSets`) when this course has ever been cached. Falls back to a live
  *   `getGhinCourseDetail` fetch (and backfills the cache) for a course that predates this
@@ -731,7 +721,7 @@ async function getPlayerCourseHandicaps(playerId, courseId) {
     const genderName = player.Gender === 'F' ? 'Female' : 'Male';
     const matching = teeSets.filter((ts) => ts.gender === genderName && ts.courseRating !== null && ts.slopeRating !== null);
     const options = matching.map((ts) => {
-        const courseHandicap = Math.round(index * (ts.slopeRating / 113) + (ts.courseRating - ts.totalPar));
+        const courseHandicap = Math.round(index * (Number(ts.slopeRating) / 113) + (Number(ts.courseRating) - ts.totalPar));
         return { teeSetId: ts.teeSetId, teeName: ts.teeName, courseHandicap };
     });
     options.sort((a, b) => b.courseHandicap - a.courseHandicap);

@@ -34,6 +34,7 @@ const teetimesService_1 = require("./src/services/teetimesService");
 const paidTrackerService_1 = require("./src/services/paidTrackerService");
 const ghinService_1 = require("./src/services/ghinService");
 const optionsService_1 = require("./src/services/optionsService");
+const payoutLedgerService_1 = require("./src/services/payoutLedgerService");
 const feedbackService_1 = require("./src/services/feedbackService");
 const upsCupService_1 = require("./src/services/upsCupService");
 const birdieRaceService_1 = require("./src/services/birdieRaceService");
@@ -291,31 +292,6 @@ app.post('/api/courses', async (req, res) => {
     catch (error) {
         console.error('Error creating course:', error.message);
         res.status(500).json({ error: 'Failed to create course' });
-    }
-});
-// Admin "Refresh Course Rating" — re-pulls every tee set from GHIN for a course that's already
-// linked (has a GHINCourseId on file) and overwrites the cache. Manual-only (no automatic
-// recheck): GHIN course ratings almost never change (10-year mandatory re-rate cycle at most),
-// and there's no API signal to detect a change, so this exists for the rare case an admin knows
-// a course was actually re-rated or renovated.
-app.post('/api/courses/:id/refresh-ghin-tee-sets', async (req, res) => {
-    try {
-        const courseId = parseInt(req.params.id);
-        const [rows] = await config_1.default.query('SELECT GHINCourseId FROM Course WHERE CourseID = ?', [courseId]);
-        const ghinCourseId = rows[0]?.GHINCourseId;
-        if (!ghinCourseId) {
-            return res.status(400).json({ error: 'This course has no GHIN course id on file — it was never linked via GHIN search.' });
-        }
-        const detail = await (0, ghinService_1.getGhinCourseDetail)(Number(ghinCourseId));
-        if (!detail || detail.teeSets.length === 0) {
-            return res.status(404).json({ error: "GHIN doesn't have complete tee-set data on file for this course." });
-        }
-        await (0, courseService_1.saveCourseTeeSets)(courseId, detail.teeSets);
-        res.json({ success: true, teeSetCount: detail.teeSets.length });
-    }
-    catch (error) {
-        console.error('Error refreshing GHIN tee sets:', error.message);
-        res.status(500).json({ error: 'Failed to refresh GHIN tee sets' });
     }
 });
 // Search GHIN's own course database (CRDB) by name, optionally narrowed to a state
@@ -827,7 +803,8 @@ app.post('/api/players/:id/ghin-skip', async (req, res) => {
 });
 // Refresh every GHIN-linked player's cached index — called once when the app launches
 // (app/_layout.tsx); no-ops (no network calls) for anyone already refreshed today, see
-// refreshGhinIndexes's doc comment. `force: true` re-pulls everyone regardless.
+// refreshGhinIndexes's doc comment. `force: true` re-pulls everyone regardless. Also the target
+// of the nightly 4am cron job (refresh_handicaps.py).
 app.post('/api/ghin/refresh-indexes', async (req, res) => {
     try {
         await (0, ghinService_1.refreshGhinIndexes)(!!req.body?.force);
@@ -932,6 +909,99 @@ app.post('/api/events/:id/options', async (req, res) => {
     catch (error) {
         console.error('Error saving event options:', error.message);
         res.status(500).json({ error: 'Failed to save event options' });
+    }
+});
+// Get a single game's effective payout settings (event defaults merged with any per-game
+// override) — lets Week Results show/adjust that week's payout split without touching every
+// other week of the same recurring event.
+app.get('/api/games/:id/payout-options', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const eventId = parseInt(req.query.eventId);
+        const result = await (0, optionsService_1.getEffectiveGamePayoutOptions)(gameId, eventId);
+        res.json(result);
+    }
+    catch (error) {
+        console.error('Error fetching game payout options:', error.message);
+        res.status(500).json({ error: 'Failed to fetch game payout options' });
+    }
+});
+// Save a per-game payout override (places/percentages only) for this one week.
+app.post('/api/games/:id/payout-options', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        await (0, optionsService_1.saveGamePayoutOverrides)(gameId, req.body);
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Error saving game payout options:', error.message);
+        res.status(500).json({ error: 'Failed to save game payout options' });
+    }
+});
+// Clear specific per-game payout override keys (e.g. just Net, or just one Teams slot),
+// reverting that section back to the event's default -- other overridden sections are untouched.
+app.delete('/api/games/:id/payout-options', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const keys = Array.isArray(req.body?.keys) ? req.body.keys : [];
+        await (0, optionsService_1.resetGamePayoutOverrides)(gameId, keys);
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Error resetting game payout options:', error.message);
+        res.status(500).json({ error: 'Failed to reset game payout options' });
+    }
+});
+// Recompute and persist this game's Net/Teams/Skins payout ledger rows -- called by Week Results
+// whenever it displays a week's payouts (browsing to it, or after an Adjust Payout save), so the
+// season summary always has an up-to-date record without a separate "finalize" step.
+app.post('/api/games/:id/sync-payouts', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        await (0, payoutLedgerService_1.syncGamePayoutLedger)(gameId);
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Error syncing game payout ledger:', error.message);
+        res.status(500).json({ error: 'Failed to sync game payout ledger' });
+    }
+});
+// Hole-in-one celebration info for a game -- null when there wasn't one. Week Results checks
+// this whenever a week is opened, to show the "wins the entire pot" celebration screen.
+app.get('/api/games/:id/hole-in-one', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const celebration = await (0, payoutLedgerService_1.getHoleInOneCelebration)(gameId);
+        res.json(celebration);
+    }
+    catch (error) {
+        console.error('Error fetching hole-in-one celebration:', error.message);
+        res.status(500).json({ error: 'Failed to fetch hole-in-one celebration' });
+    }
+});
+// Season-long payout summary for an event: per player, total paid in vs. total won.
+app.get('/api/events/:id/payout-summary', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id);
+        const summary = await (0, payoutLedgerService_1.getSeasonPayoutSummary)(eventId);
+        res.json(summary);
+    }
+    catch (error) {
+        console.error('Error fetching season payout summary:', error.message);
+        res.status(500).json({ error: 'Failed to fetch season payout summary' });
+    }
+});
+// Net + Teams payout totals for every calendar week of an event (Skins excluded -- flat rate
+// all year) -- read-only, for the Payout Review screen's at-a-glance list.
+app.get('/api/events/:id/payout-review', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id);
+        const weeks = await (0, payoutLedgerService_1.getPayoutReviewForEvent)(eventId);
+        res.json(weeks);
+    }
+    catch (error) {
+        console.error('Error fetching payout review:', error.message);
+        res.status(500).json({ error: 'Failed to fetch payout review' });
     }
 });
 // Whether an event currently has an Admin password set endpoint
@@ -1329,6 +1399,22 @@ app.post('/api/game', async (req, res) => {
         res.status(500).json({ error: 'Failed to get or create game' });
     }
 });
+// Get a player's handicap already saved for THIS SPECIFIC game (not just their most recent
+// handicap anywhere) -- lets Start Game skip the tee/handicap prompt entirely when re-adding
+// someone who already went through it earlier today for this exact round (e.g. resuming after a
+// crash, or being re-picked after a Resume Group).
+app.get('/api/games/:id/handicap/:playerId', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const playerId = parseInt(req.params.playerId);
+        const [rows] = await config_1.default.query('SELECT Hdcp FROM Hdcp WHERE GameID = ? AND PlayerID = ?', [gameId, playerId]);
+        res.json({ hdcp: rows.length > 0 ? rows[0].Hdcp : null });
+    }
+    catch (error) {
+        console.error('Error fetching game player handicap:', error.message);
+        res.status(500).json({ error: 'Failed to fetch game player handicap' });
+    }
+});
 // Save a player's handicap as entered for this game endpoint (mirrors legacy startgame.php's Hdcp write)
 app.post('/api/games/:id/handicap', async (req, res) => {
     try {
@@ -1713,15 +1799,17 @@ app.get('/api/games/:id/team-games', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch team games' });
     }
 });
-// Create a new team game for a round endpoint
+// Create a new team game for a round endpoint -- format defaults to 'custom' when omitted (see
+// createTeamGame); teamSize/keepCount aren't required for the two predefined formats (36/48,
+// Irish Rumble), which ignore them entirely.
 app.post('/api/games/:id/team-games', async (req, res) => {
     try {
         const gameId = parseInt(req.params.id);
-        const { label, teamSize, keepCount, assignMode, lastHoleAll, slot } = req.body;
-        if (!label || !teamSize || !keepCount || !assignMode) {
-            return res.status(400).json({ error: 'label, teamSize, keepCount, and assignMode are required' });
+        const { label, teamSize, keepCount, assignMode, lastHoleAll, slot, format } = req.body;
+        if (!label || !assignMode) {
+            return res.status(400).json({ error: 'label and assignMode are required' });
         }
-        const teamGameId = await (0, teamGameService_1.createTeamGame)(gameId, label, teamSize, keepCount, assignMode, !!lastHoleAll, slot);
+        const teamGameId = await (0, teamGameService_1.createTeamGame)(gameId, label, teamSize, keepCount, assignMode, !!lastHoleAll, slot, format);
         res.json({ teamGameId });
     }
     catch (error) {
@@ -1872,6 +1960,58 @@ app.get('/api/team-games/:teamGameId/scorecard/:teamNumber', async (req, res) =>
         res.status(500).json({ error: 'Failed to fetch team game scorecard' });
     }
 });
+// Live standings for a 36/48 team game (thru, score vs. par so far, kept-scores-used) --
+// empty for a 'custom'-format team game, this view doesn't apply there.
+app.get('/api/team-games/:teamGameId/live-leaderboard', async (req, res) => {
+    try {
+        const teamGameId = parseInt(req.params.teamGameId);
+        const rows = await (0, teamGameService_1.getTeamGameLiveLeaderboard)(teamGameId);
+        res.json(rows);
+    }
+    catch (error) {
+        console.error('Error fetching team game live leaderboard:', error.message);
+        res.status(500).json({ error: 'Failed to fetch team game live leaderboard' });
+    }
+});
+// Live standings for an Irish Rumble team game (thru, score vs. par so far) -- empty for
+// anything but an 'irish'-format team game.
+app.get('/api/team-games/:teamGameId/irish-leaderboard', async (req, res) => {
+    try {
+        const teamGameId = parseInt(req.params.teamGameId);
+        const rows = await (0, teamGameService_1.getIrishRumbleLiveLeaderboard)(teamGameId);
+        res.json(rows);
+    }
+    catch (error) {
+        console.error('Error fetching Irish Rumble live leaderboard:', error.message);
+        res.status(500).json({ error: 'Failed to fetch Irish Rumble live leaderboard' });
+    }
+});
+// Weeks that had at least one 36/48 team game with a rostered, scored player -- for the Best
+// Possible screen's week picker.
+app.get('/api/events/:eventId/best-possible-weeks', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.eventId);
+        const weeks = await (0, teamGameService_1.getBestPossibleWeeks)(eventId);
+        res.json(weeks);
+    }
+    catch (error) {
+        console.error('Error fetching best-possible weeks:', error.message);
+        res.status(500).json({ error: 'Failed to fetch best-possible weeks' });
+    }
+});
+// Actual vs. best-possible (perfect hindsight) score for every team in a 36/48 team game --
+// empty for a 'custom'-format team game, meant to only ever be checked post-round.
+app.get('/api/team-games/:teamGameId/best-possible', async (req, res) => {
+    try {
+        const teamGameId = parseInt(req.params.teamGameId);
+        const results = await (0, teamGameService_1.getTeamBestPossible)(teamGameId);
+        res.json(results);
+    }
+    catch (error) {
+        console.error('Error fetching team best-possible:', error.message);
+        res.status(500).json({ error: 'Failed to fetch team best-possible' });
+    }
+});
 // Start Game hook: register a checked-in foursome as a team in any 'group'-mode team game
 // for this round — a no-op unless the event has explicitly created one.
 app.post('/api/games/:id/group-team', async (req, res) => {
@@ -1887,6 +2027,79 @@ app.post('/api/games/:id/group-team', async (req, res) => {
     catch (error) {
         console.error('Error updating group team:', error.message);
         res.status(500).json({ error: 'Failed to update group team' });
+    }
+});
+// Which 36/48-format team game(s) (if any) this exact foursome is registered as one team in for
+// this round — app/game.tsx calls this once to know whether it needs to show the live per-hole
+// "keep how many" prompt at all.
+app.get('/api/games/:id/keep-teams', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const playerIds = String(req.query.playerIds ?? '')
+            .split(',')
+            .map((s) => parseInt(s, 10))
+            .filter((n) => Number.isFinite(n));
+        const teams = await (0, teamGameService_1.getKeepFormatTeamsForPlayers)(gameId, playerIds);
+        res.json(teams);
+    }
+    catch (error) {
+        console.error('Error fetching keep-format teams:', error.message);
+        res.status(500).json({ error: 'Failed to fetch keep-format teams' });
+    }
+});
+// Which Irish Rumble team game(s) (if any) this exact foursome is registered as one team in for
+// this round — app/game.tsx calls this once to know whether it needs to show the live per-hole
+// score card at all.
+app.get('/api/games/:id/irish-teams', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const playerIds = String(req.query.playerIds ?? '')
+            .split(',')
+            .map((s) => parseInt(s, 10))
+            .filter((n) => Number.isFinite(n));
+        const teams = await (0, teamGameService_1.getIrishRumbleTeamsForPlayers)(gameId, playerIds);
+        res.json(teams);
+    }
+    catch (error) {
+        console.error('Error fetching Irish Rumble teams:', error.message);
+        res.status(500).json({ error: 'Failed to fetch Irish Rumble teams' });
+    }
+});
+// A 36/48 team's already-recorded live keep choices, keyed by hole -- what the live prompt
+// resumes from.
+app.get('/api/team-games/:teamGameId/hole-keep', async (req, res) => {
+    try {
+        const teamGameId = parseInt(req.params.teamGameId);
+        const teamNumber = parseInt(req.query.teamNumber);
+        if (!Number.isFinite(teamNumber)) {
+            return res.status(400).json({ error: 'teamNumber query param is required' });
+        }
+        const counts = await (0, teamGameService_1.getTeamGameHoleKeepCounts)(teamGameId, teamNumber);
+        res.json(counts);
+    }
+    catch (error) {
+        console.error('Error fetching team game hole keep counts:', error.message);
+        res.status(500).json({ error: 'Failed to fetch hole keep counts' });
+    }
+});
+// Save one hole's live keep-count choice for a 36/48 team -- hard-validated server-side against
+// the same reachability math the live picker itself uses, so an invalid choice can't be recorded.
+app.post('/api/team-games/:teamGameId/hole-keep', async (req, res) => {
+    try {
+        const teamGameId = parseInt(req.params.teamGameId);
+        const { teamNumber, holeId, keepCount, holesRemaining } = req.body;
+        if ([teamNumber, holeId, keepCount, holesRemaining].some((v) => typeof v !== 'number')) {
+            return res.status(400).json({ error: 'teamNumber, holeId, keepCount, and holesRemaining (numbers) are required' });
+        }
+        const result = await (0, teamGameService_1.saveTeamGameHoleKeepCount)(teamGameId, teamNumber, holeId, keepCount, holesRemaining);
+        if (!result.ok) {
+            return res.status(400).json({ error: result.error || 'Failed to save keep count' });
+        }
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Error saving team game hole keep count:', error.message);
+        res.status(500).json({ error: 'Failed to save keep count' });
     }
 });
 // Start Game hook: always record "who played together" for crash/exit recovery — independent

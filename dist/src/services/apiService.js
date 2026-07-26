@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getEasyGhinLinks = exports.linkPlayerGhin = exports.searchGhin = exports.setPlayerGhinSkip = exports.getGhinPlayerList = exports.recheckNaughtyPosting = exports.getNaughtyList = exports.addTeeTime = exports.setPaidTracker = exports.getPaidTrackerList = exports.getTeeTimes = exports.getCourses = exports.getPlayerCourseHandicaps = exports.getPlayerHandicap = exports.getPlayerRecentSkins = exports.getPlayerSkinsStats = exports.getPlayerRounds = exports.getPlayerStats = exports.getAllPlayersWithHistory = exports.deleteEmptyGames = exports.getEmptyGames = exports.deleteOrphanedRows = exports.getOrphanedRows = exports.deleteOrphanedEventLinks = exports.getOrphanedEventLinks = exports.deleteOrphanedPlayers = exports.getInvalidNamePlayers = exports.getOrphanedPlayers = exports.ignoreMergeSuggestion = exports.getMergeSuggestions = exports.mergePlayers = exports.getMergePreview = exports.searchAllPlayers = exports.renamePlayer = exports.getPlayerListForEvent = exports.linkPlayers = exports.getUnlinkedPlayers = exports.assignGuestPlayer = exports.addPlayer = exports.getEventPlayers = exports.getCourseList = exports.createCourse = exports.scanScorecard = exports.renameEventCourse = exports.renameEvent = exports.getEventById = exports.deleteEvent = exports.getAllEventsWithCounts = exports.searchAllEventsForMaster = exports.searchEvents = void 0;
-exports.getTeamAssignments = exports.getOptedOutPlayers = exports.unignoreCleanupItem = exports.getIgnoredCleanupItems = exports.ignoreCleanupCandidates = exports.deleteCleanupCandidates = exports.getAllEventsCleanupCandidates = exports.getCleanupCandidates = exports.getCutSummary = exports.getTeamResults = exports.getTeamStatus = exports.getWeekResults = exports.getWhatIfResults = exports.getWhatIfTeamGameOptions = exports.swapPlayersInGame = exports.getGameSwapPreview = exports.getPlayersForGame = exports.getGamesForEvent = exports.getDefaultScorecardSide = exports.getLeaderboard = exports.updateGameCourse = exports.ensureGameForDate = exports.getTeamGameWeeks = exports.getLatestGame = exports.createEvent = exports.deleteCalendarDay = exports.setCalendarDay = exports.getEventCalendar = exports.deleteUpsCupWinner = exports.setUpsCupWinner = exports.getUpsCupWinners = exports.getHoleBirdieDetail = exports.getPlayerBirdieStatus = exports.getBirdieLeaderboard = exports.removePlayerPaid = exports.setPlayerPaid = exports.getPaidPlayers = exports.getCurrentStandings = exports.getIneligiblePlayers = exports.getUpsPoints = exports.getMajorWinners = exports.setAdminPassword = exports.verifyAdminPassword = exports.getAdminPasswordStatus = exports.saveEventOptions = exports.getEventOptions = exports.savePlayerStatus = exports.getPlayerStatus = exports.getGhinYears = exports.getGhinSummary = void 0;
-exports.deletePlayerHoleScores = exports.savePlayerHoleScores = exports.getPlayerGameScores = exports.getCourseHoleHistory = exports.getCourseDetails = exports.getPlayingGroup = exports.upsertPlayingGroup = exports.addOrUpdateGroupTeam = exports.saveGameHandicap = exports.getOrCreateGame = exports.createRandomTeams = exports.getRandomTeamsListing = exports.getRandomTeamsStatus = exports.removePlayers = exports.getActivePlayers = exports.recalculateSkins = exports.getGameSkinsSummary = exports.getSkinsTotals = exports.getSkinsForHole = exports.getScoredHoles = exports.getGameScorecard = exports.getTeamGameScorecard = exports.getTeamGameCutSummary = exports.getTeamGameResults = exports.createRandomTeamGameTeams = exports.getTeamGameRoster = exports.saveManualTeamGameTeams = exports.getTeamGameAssignments = exports.getTeamGameStatus = exports.deleteTeamGame = exports.skipTeamGameSlot = exports.createTeamGame = exports.listTeamGames = exports.getTeamScorecard = exports.saveTeams = void 0;
+exports.setPlayerGhinSkip = exports.getGhinPlayerList = exports.recheckNaughtyPosting = exports.getNaughtyList = exports.addTeeTime = exports.setPaidTracker = exports.getPaidTrackerList = exports.getTeeTimes = exports.getCourses = exports.getPlayerCourseHandicaps = exports.getPlayerHandicap = exports.getPlayerRecentSkins = exports.getPlayerSkinsStats = exports.getPlayerRounds = exports.getPlayerStats = exports.getAllPlayersWithHistory = exports.deleteEmptyGames = exports.getEmptyGames = exports.deleteOrphanedRows = exports.getOrphanedRows = exports.deleteOrphanedEventLinks = exports.getOrphanedEventLinks = exports.deleteOrphanedPlayers = exports.getInvalidNamePlayers = exports.getOrphanedPlayers = exports.ignoreMergeSuggestion = exports.getMergeSuggestions = exports.mergePlayers = exports.getMergePreview = exports.searchPlayersInEvent = exports.searchAllPlayers = exports.renamePlayer = exports.getPlayerListForEvent = exports.linkPlayers = exports.getUnlinkedPlayers = exports.assignGuestPlayer = exports.addPlayer = exports.getEventPlayers = exports.getCourseList = exports.getGhinCourseDetail = exports.searchGhinCourses = exports.createCourse = exports.scanScorecard = exports.renameEventCourse = exports.renameEvent = exports.getEventById = exports.deleteEvent = exports.getAllEventsWithCounts = exports.searchAllEventsForMaster = exports.searchEvents = void 0;
+exports.getTeamResults = exports.getTeamStatus = exports.getWeekResults = exports.getWhatIfResults = exports.getWhatIfTeamGameOptions = exports.swapPlayersInGame = exports.getGameSwapPreview = exports.getPlayersForGame = exports.getGamesForEvent = exports.getDefaultScorecardSide = exports.getLeaderboard = exports.updateGameCourse = exports.ensureGameForDate = exports.getTeamGameWeeks = exports.getLatestGame = exports.createEvent = exports.deleteCalendarDay = exports.setCalendarDay = exports.getEventCalendar = exports.deleteUpsCupWinner = exports.setUpsCupWinner = exports.getUpsCupWinners = exports.getHoleBirdieDetail = exports.getPlayerBirdieStatus = exports.getBirdieLeaderboard = exports.removePlayerPaid = exports.setPlayerPaid = exports.getPaidPlayers = exports.getCurrentStandings = exports.getIneligiblePlayers = exports.getUpsPoints = exports.getMajorWinners = exports.setAdminPassword = exports.verifyAdminPassword = exports.getAdminPasswordStatus = exports.getPayoutReview = exports.getSeasonPayoutSummary = exports.syncGamePayouts = exports.resetGamePayoutOptions = exports.saveGamePayoutOptions = exports.getGamePayoutOptions = exports.saveEventOptions = exports.getEventOptions = exports.savePlayerStatus = exports.getPlayerStatus = exports.getGhinYears = exports.getGhinSummary = exports.getEasyGhinLinks = exports.linkPlayerGhin = exports.searchGhin = void 0;
+exports.getFeedback = exports.submitFeedback = exports.deletePlayerHoleScores = exports.savePlayerHoleScores = exports.getPlayerGameScores = exports.getCourseHoleHistory = exports.getCourseDetails = exports.getPlayingGroup = exports.upsertPlayingGroup = exports.addOrUpdateGroupTeam = exports.saveGameHandicap = exports.getOrCreateGame = exports.createRandomTeams = exports.getShowTeamsListing = exports.getRandomTeamsListing = exports.getRandomTeamsStatus = exports.removePlayers = exports.getActivePlayers = exports.recalculateSkins = exports.getGameSkinsSummary = exports.getSkinsTotals = exports.getSkinsForHole = exports.getScoredHoles = exports.getGameScorecard = exports.getTeamGameScorecard = exports.getTeamGameCutSummary = exports.getTeamGameResults = exports.createRandomTeamGameTeams = exports.getTeamGameRoster = exports.saveManualTeamGameTeams = exports.getTeamGameAssignments = exports.getTeamGameStatus = exports.deleteTeamGame = exports.skipTeamGameSlot = exports.createTeamGame = exports.listTeamGames = exports.getTeamScorecard = exports.saveTeams = exports.getTeamAssignments = exports.getOptedOutPlayers = exports.unignoreCleanupItem = exports.getIgnoredCleanupItems = exports.ignoreCleanupCandidates = exports.deleteCleanupCandidates = exports.getAllEventsCleanupCandidates = exports.getCleanupCandidates = exports.getCutSummary = void 0;
 // Production API URL - always use this for built apps
 const API_URL = 'https://api.myclubgolf.com/api';
 /**
@@ -136,14 +136,17 @@ const scanScorecard = async (imageBase64, mediaType) => {
 };
 exports.scanScorecard = scanScorecard;
 /**
- * Create a new course with its hole-by-hole par/handicap layout via the API server.
+ * Create a new course with its hole-by-hole par/handicap/yardage layout via the API server.
+ * `ghinInfo`/`ghinTeeSets` are only passed when the course came from GHIN's "Search GHIN Course
+ * Database" flow — `ghinTeeSets` caches every tee GHIN has on file (not just the one used for
+ * `holes`) so Start Game's tee picker doesn't need a second live GHIN fetch.
  */
-const createCourse = async (courseName, holes) => {
+const createCourse = async (courseName, holes, ghinInfo, ghinTeeSets) => {
     try {
         const response = await fetch(`${API_URL}/courses`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ courseName, holes }),
+            body: JSON.stringify({ courseName, holes, ghinInfo, ghinTeeSets }),
         });
         if (!response.ok)
             return null;
@@ -156,6 +159,42 @@ const createCourse = async (courseName, holes) => {
     }
 };
 exports.createCourse = createCourse;
+/**
+ * Search GHIN's own course database by name, optionally narrowed to a 2-letter state — powers
+ * Add Course's "Search GHIN Course Database" flow, so par/handicap/yardage come from GHIN's own
+ * numbers instead of an OCR scan or manual entry.
+ */
+const searchGhinCourses = async (name, state) => {
+    try {
+        const params = new URLSearchParams({ name });
+        if (state)
+            params.set('state', state);
+        const response = await fetch(`${API_URL}/ghin/course-search?${params.toString()}`);
+        if (!response.ok)
+            return [];
+        const data = await response.json();
+        return (Array.isArray(data) ? data : []);
+    }
+    catch (error) {
+        console.error('Error searching GHIN courses:', error);
+        return [];
+    }
+};
+exports.searchGhinCourses = searchGhinCourses;
+/** Fetch a GHIN course search result's full tee-set detail (par/handicap/yardage per tee). */
+const getGhinCourseDetail = async (courseId) => {
+    try {
+        const response = await fetch(`${API_URL}/ghin/course-detail?courseId=${courseId}`);
+        if (!response.ok)
+            return null;
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching GHIN course detail:', error);
+        return null;
+    }
+};
+exports.getGhinCourseDetail = getGhinCourseDetail;
 /**
  * Get all courses from the database via the API server
  */
@@ -309,7 +348,7 @@ exports.renamePlayer = renamePlayer;
 /** Search every player in the system by name, not scoped to one event's roster */
 const searchAllPlayers = async (query) => {
     try {
-        const response = await fetch(`${API_URL}/players/search?q=${encodeURIComponent(query)}`);
+        const response = await fetch(`${API_URL}/players/search?q=${encodeURIComponent(query)}`, { cache: 'no-store' });
         if (!response.ok)
             return [];
         return (await response.json());
@@ -320,6 +359,21 @@ const searchAllPlayers = async (query) => {
     }
 };
 exports.searchAllPlayers = searchAllPlayers;
+/** Search players within one event's roster — Admin -> Players -> Swap Players' "Correct
+ * Player" picker, unlike Merge Players' system-wide search */
+const searchPlayersInEvent = async (eventId, query) => {
+    try {
+        const response = await fetch(`${API_URL}/events/${eventId}/players/search?q=${encodeURIComponent(query)}`, { cache: 'no-store' });
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error searching players in event:', error);
+        return [];
+    }
+};
+exports.searchPlayersInEvent = searchPlayersInEvent;
 /** Preview a player merge's affected row counts before committing to it */
 const getMergePreview = async (duplicateId, targetId) => {
     try {
@@ -939,6 +993,100 @@ const saveEventOptions = async (eventId, options) => {
 };
 exports.saveEventOptions = saveEventOptions;
 /**
+ * Get a single week's effective payout settings (event defaults merged with any override
+ * saved just for that game) -- lets Week Results adjust one week's payout split inline without
+ * ever touching the event-wide Options screen.
+ */
+const getGamePayoutOptions = async (gameId, eventId) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/payout-options?eventId=${eventId}`);
+        if (!response.ok)
+            return undefined;
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching game payout options:', error);
+        return undefined;
+    }
+};
+exports.getGamePayoutOptions = getGamePayoutOptions;
+/** Save a payout override for one specific week's game -- other weeks are unaffected. */
+const saveGamePayoutOptions = async (gameId, overrides) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/payout-options`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(overrides),
+        });
+        return response.ok;
+    }
+    catch (error) {
+        console.error('Error saving game payout options:', error);
+        return false;
+    }
+};
+exports.saveGamePayoutOptions = saveGamePayoutOptions;
+/** Clear specific payout override keys for a week (e.g. just Net, or just one Teams slot),
+ * reverting that section back to the event's default -- other overridden sections are untouched. */
+const resetGamePayoutOptions = async (gameId, keys) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/payout-options`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keys }),
+        });
+        return response.ok;
+    }
+    catch (error) {
+        console.error('Error resetting game payout options:', error);
+        return false;
+    }
+};
+exports.resetGamePayoutOptions = resetGamePayoutOptions;
+/** Recompute and persist this game's Net/Teams/Skins payout ledger rows -- call whenever a
+ * week's payouts are displayed (Week Results does this on load and after an Adjust Payout save)
+ * so the season summary always reflects current settings without a separate "finalize" step. */
+const syncGamePayouts = async (gameId) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/sync-payouts`, { method: 'POST' });
+        return response.ok;
+    }
+    catch (error) {
+        console.error('Error syncing game payouts:', error);
+        return false;
+    }
+};
+exports.syncGamePayouts = syncGamePayouts;
+/** Season-long payout summary for an event: per player, total paid in vs. total won. */
+const getSeasonPayoutSummary = async (eventId) => {
+    try {
+        const response = await fetch(`${API_URL}/events/${eventId}/payout-summary`);
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching season payout summary:', error);
+        return [];
+    }
+};
+exports.getSeasonPayoutSummary = getSeasonPayoutSummary;
+/** Net + Teams payout totals for every calendar week of an event (Skins excluded -- flat rate
+ * all year), for the Payout Review screen. Read-only. */
+const getPayoutReview = async (eventId) => {
+    try {
+        const response = await fetch(`${API_URL}/events/${eventId}/payout-review`);
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching payout review:', error);
+        return [];
+    }
+};
+exports.getPayoutReview = getPayoutReview;
+/**
  * Whether an event currently has an Admin password set (new events default to none)
  */
 const getAdminPasswordStatus = async (eventId) => {
@@ -1275,7 +1423,7 @@ exports.createEvent = createEvent;
  */
 const getLatestGame = async (eventId) => {
     try {
-        const response = await fetch(`${API_URL}/events/${eventId}/latest-game`);
+        const response = await fetch(`${API_URL}/events/${eventId}/latest-game`, { cache: 'no-store' });
         if (!response.ok)
             return undefined;
         return (await response.json());
@@ -1377,7 +1525,7 @@ exports.getDefaultScorecardSide = getDefaultScorecardSide;
  */
 const getGamesForEvent = async (eventId) => {
     try {
-        const response = await fetch(`${API_URL}/events/${eventId}/games`);
+        const response = await fetch(`${API_URL}/events/${eventId}/games`, { cache: 'no-store' });
         if (!response.ok)
             return [];
         return (await response.json());
@@ -1393,7 +1541,7 @@ exports.getGamesForEvent = getGamesForEvent;
  */
 const getPlayersForGame = async (gameId) => {
     try {
-        const response = await fetch(`${API_URL}/games/${gameId}/players`);
+        const response = await fetch(`${API_URL}/games/${gameId}/players`, { cache: 'no-store' });
         if (!response.ok)
             return [];
         return (await response.json());
@@ -1407,7 +1555,7 @@ exports.getPlayersForGame = getPlayersForGame;
 /** Preview what swapping two players' data for one game would move (Admin -> Players -> Swap Players) */
 const getGameSwapPreview = async (gameId, playerAId, playerBId) => {
     try {
-        const response = await fetch(`${API_URL}/games/${gameId}/swap-preview?playerAId=${playerAId}&playerBId=${playerBId}`);
+        const response = await fetch(`${API_URL}/games/${gameId}/swap-preview?playerAId=${playerAId}&playerBId=${playerBId}`, { cache: 'no-store' });
         if (!response.ok)
             return null;
         return (await response.json());
@@ -1420,13 +1568,15 @@ const getGameSwapPreview = async (gameId, playerAId, playerBId) => {
 exports.getGameSwapPreview = getGameSwapPreview;
 /** Swap two players' Score/Team/Skins/Hdcp data for one game — for when the wrong same-surname
  * player got picked when entering scores. Only affects this one game, not either player's
- * broader history. */
-const swapPlayersInGame = async (gameId, playerAId, playerBId) => {
+ * broader history. `playerBHandicap`, if given, is the correct player's real handicap for this
+ * round — used to recompute their NetScore and Skins, since the moved data carries whatever
+ * handicap the wrong player was entered under. */
+const swapPlayersInGame = async (gameId, playerAId, playerBId, playerBHandicap) => {
     try {
         const response = await fetch(`${API_URL}/games/${gameId}/swap`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playerAId, playerBId }),
+            body: JSON.stringify({ playerAId, playerBId, playerBHandicap }),
         });
         const data = (await response.json());
         if (response.ok)
@@ -1987,11 +2137,11 @@ const recalculateSkins = async (gameId) => {
 };
 exports.recalculateSkins = recalculateSkins;
 /**
- * Get active (not opted-out) players for a game via the API server
+ * Get players with scores for a game via the API server
  */
 const getActivePlayers = async (gameId) => {
     try {
-        const response = await fetch(`${API_URL}/games/${gameId}/active-players`);
+        const response = await fetch(`${API_URL}/games/${gameId}/active-players`, { cache: 'no-store' });
         if (!response.ok)
             return [];
         return (await response.json());
@@ -2054,6 +2204,24 @@ const getRandomTeamsListing = async (gameId) => {
 };
 exports.getRandomTeamsListing = getRandomTeamsListing;
 /**
+ * Get every drawn team for a game via the API server (Show Teams) — checks the current
+ * multi-team-games system first, falling back to the legacy single-team-game table only for
+ * older events that never set up a "Teams N" card.
+ */
+const getShowTeamsListing = async (gameId) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/show-teams`, { cache: 'no-store' });
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching show-teams listing:', error);
+        return [];
+    }
+};
+exports.getShowTeamsListing = getShowTeamsListing;
+/**
  * Generate random teams for a game via the API server
  */
 const createRandomTeams = async (gameId) => {
@@ -2089,20 +2257,34 @@ exports.getOrCreateGame = getOrCreateGame;
  * Save a player's handicap as entered for this game via the API server (mirrors legacy
  * startgame.php's Hdcp write) — records the golfer's real, uncapped handicap so it prefills
  * correctly next time, even if the event's Max Hdcp option capped what's actually played with.
+ *
+ * Retries a couple of times before giving up — Start Game fires one of these per player in a
+ * `Promise.all` burst the moment a foursome checks in, and under heavy concurrent load (e.g. a
+ * large field all starting around the same time) that whole burst can lose the race for a
+ * connection and fail. Confirmed real 2026-07-12: 14 players across 6 different groups had their
+ * scores save fine but never got an Hdcp row for the game at all, with nothing telling anyone it
+ * had happened — every downstream handicap lookup for them silently fell back to a stale prior
+ * value instead of what they actually played with.
  */
 const saveGameHandicap = async (gameId, playerId, hdcp) => {
-    try {
-        const response = await fetch(`${API_URL}/games/${gameId}/handicap`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playerId, hdcp }),
-        });
-        return response.ok;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            const response = await fetch(`${API_URL}/games/${gameId}/handicap`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ playerId, hdcp }),
+            });
+            if (response.ok)
+                return true;
+            console.error('Error saving handicap: server returned', response.status);
+        }
+        catch (error) {
+            console.error('Error saving handicap:', error);
+        }
+        if (attempt < 2)
+            await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
     }
-    catch (error) {
-        console.error('Error saving handicap:', error);
-        return false;
-    }
+    return false;
 };
 exports.saveGameHandicap = saveGameHandicap;
 /**
@@ -2248,3 +2430,33 @@ const deletePlayerHoleScores = async (gameId, playerId, holeNumbers) => {
     }
 };
 exports.deletePlayerHoleScores = deletePlayerHoleScores;
+/** Log a bug or idea via the API server */
+const submitFeedback = async (type, title, description, submittedBy) => {
+    try {
+        const response = await fetch(`${API_URL}/feedback`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type, title, description, submittedBy }),
+        });
+        return response.ok;
+    }
+    catch (error) {
+        console.error('Error submitting feedback:', error);
+        return false;
+    }
+};
+exports.submitFeedback = submitFeedback;
+/** Get the full bug/idea log via the API server */
+const getFeedback = async () => {
+    try {
+        const response = await fetch(`${API_URL}/feedback`, { cache: 'no-store' });
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching feedback:', error);
+        return [];
+    }
+};
+exports.getFeedback = getFeedback;

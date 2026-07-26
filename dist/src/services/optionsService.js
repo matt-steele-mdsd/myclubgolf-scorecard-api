@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.hasAdminPassword = exports.verifyAdminPassword = exports.setAdminPassword = exports.saveEventOptions = exports.getEventOptions = void 0;
+exports.resetGamePayoutOverrides = exports.saveGamePayoutOverrides = exports.getEffectiveGamePayoutOptions = exports.getGamePayoutOverrides = exports.PAYOUT_OVERRIDE_KEYS = exports.hasAdminPassword = exports.verifyAdminPassword = exports.setAdminPassword = exports.saveEventOptions = exports.getEventOptions = void 0;
 const config_1 = __importDefault(require("../db/config"));
 // Default options for any event with no EventOptions rows yet — including brand-new events,
 // since createEvent doesn't write any options rows itself.
@@ -31,6 +31,7 @@ const DEFAULTS = {
     teams_lastholeall: false,
     teams_blinddraw: false,
     teams_partnerteams: false,
+    teams_format: 'custom',
     teams_extra_count: '0',
     teams2_netcut: '',
     teams2_netcut9: '',
@@ -45,6 +46,7 @@ const DEFAULTS = {
     teams2_lastholeall: false,
     teams2_blinddraw: false,
     teams2_partnerteams: false,
+    teams2_format: 'custom',
     teams3_netcut: '',
     teams3_netcut9: '',
     teams3_payin: '',
@@ -58,6 +60,7 @@ const DEFAULTS = {
     teams3_lastholeall: false,
     teams3_blinddraw: false,
     teams3_partnerteams: false,
+    teams3_format: 'custom',
     teams4_netcut: '',
     teams4_netcut9: '',
     teams4_payin: '',
@@ -71,6 +74,7 @@ const DEFAULTS = {
     teams4_lastholeall: false,
     teams4_blinddraw: false,
     teams4_partnerteams: false,
+    teams4_format: 'custom',
     skins_maxonestroke: true,
     skins_payin: '5.00',
     skins_validation_score: false,
@@ -104,16 +108,16 @@ const TEXT_KEYS = [
     'game_netpct1', 'game_netpct2', 'game_netpct3', 'game_netpct4',
     'teams_netcut', 'teams_netcut9', 'teams_payin', 'teams_places',
     'teams_pct1', 'teams_pct2', 'teams_pct3', 'teams_pct4',
-    'teams_teamsize', 'teams_keepcount', 'teams_extra_count',
+    'teams_teamsize', 'teams_keepcount', 'teams_format', 'teams_extra_count',
     'teams2_netcut', 'teams2_netcut9', 'teams2_payin', 'teams2_places',
     'teams2_pct1', 'teams2_pct2', 'teams2_pct3', 'teams2_pct4',
-    'teams2_teamsize', 'teams2_keepcount',
+    'teams2_teamsize', 'teams2_keepcount', 'teams2_format',
     'teams3_netcut', 'teams3_netcut9', 'teams3_payin', 'teams3_places',
     'teams3_pct1', 'teams3_pct2', 'teams3_pct3', 'teams3_pct4',
-    'teams3_teamsize', 'teams3_keepcount',
+    'teams3_teamsize', 'teams3_keepcount', 'teams3_format',
     'teams4_netcut', 'teams4_netcut9', 'teams4_payin', 'teams4_places',
     'teams4_pct1', 'teams4_pct2', 'teams4_pct3', 'teams4_pct4',
-    'teams4_teamsize', 'teams4_keepcount',
+    'teams4_teamsize', 'teams4_keepcount', 'teams4_format',
     'skins_payin',
     'ups_minevents', 'ups_numscores', 'ups_numplayers', 'ups_yearsexemption',
 ];
@@ -179,3 +183,72 @@ const hasAdminPassword = async (eventId) => {
     return rows.length > 0 && !!rows[0].OptionValue;
 };
 exports.hasAdminPassword = hasAdminPassword;
+// Places-to-pay and split-percentage keys only, for Net and each of the 4 possible Teams cards —
+// the subset of EventOptionsData a single week's game can override without touching pay-in,
+// team size, or any other event-wide rule. Stored in their own GameOptions table (GameID,
+// OptionName, OptionValue — same shape as EventOptions, just keyed per-game instead of per-event)
+// so overriding one week's payout split never affects any other week of a recurring event.
+//
+// Up to 10 places per section here, vs. the event-level Options screen's fixed max of 4 — a
+// per-game override can pay more places than the event's own default ever could, e.g. a week
+// with an unusually large field. Places 5-10 have no event-level default to fall back to (that
+// interface only has pct1-4), so they're only ever populated by an explicit override.
+// Note the inconsistent separator, matching EventOptionsData's existing (pre-existing, not
+// introduced here) naming: "game_net" concatenates directly (game_netplaces), while the Teams
+// prefixes have a trailing underscore (teams_places, teams2_places, ...).
+const PAYOUT_PREFIXES = ['game_net', 'teams_', 'teams2_', 'teams3_', 'teams4_'];
+exports.PAYOUT_OVERRIDE_KEYS = PAYOUT_PREFIXES.flatMap((prefix) => [
+    `${prefix}places`,
+    ...Array.from({ length: 10 }, (_, i) => `${prefix}pct${i + 1}`),
+]);
+/** Which payout fields (if any) this specific game has overridden from its event's defaults. */
+const getGamePayoutOverrides = async (gameId) => {
+    const [rows] = await config_1.default.query('SELECT OptionName, OptionValue FROM GameOptions WHERE GameID = ?', [gameId]);
+    const result = {};
+    for (const row of rows) {
+        const name = row.OptionName;
+        if (exports.PAYOUT_OVERRIDE_KEYS.includes(name)) {
+            result[name] = row.OptionValue ?? '';
+        }
+    }
+    return result;
+};
+exports.getGamePayoutOverrides = getGamePayoutOverrides;
+/**
+ * Merge an event's default payout settings with this game's overrides (override wins per-key),
+ * plus exactly which keys are overridden — the UI uses `overriddenKeys` per-section (Net vs.
+ * each Teams slot independently) to show "customized for this week" vs. the event default.
+ */
+const getEffectiveGamePayoutOptions = async (gameId, eventId) => {
+    const [eventOptions, overrides] = await Promise.all([
+        (0, exports.getEventOptions)(eventId),
+        (0, exports.getGamePayoutOverrides)(gameId),
+    ]);
+    const values = {};
+    for (const key of exports.PAYOUT_OVERRIDE_KEYS) {
+        values[key] = overrides[key] ?? eventOptions[key] ?? '';
+    }
+    return { values, overriddenKeys: Object.keys(overrides) };
+};
+exports.getEffectiveGamePayoutOptions = getEffectiveGamePayoutOptions;
+/** Save this game's payout overrides — only the provided keys are written/updated. */
+const saveGamePayoutOverrides = async (gameId, overrides) => {
+    for (const [name, value] of Object.entries(overrides)) {
+        await config_1.default.query(`INSERT INTO GameOptions (GameID, OptionName, OptionValue, LastUpdateUser)
+       VALUES (?, ?, ?, 'app')
+       ON DUPLICATE KEY UPDATE OptionValue = VALUES(OptionValue), LastUpdateDt = CURRENT_TIMESTAMP`, [gameId, name, value ?? '']);
+    }
+};
+exports.saveGamePayoutOverrides = saveGamePayoutOverrides;
+/** Clear this game's payout overrides entirely, reverting it back to the event's defaults. */
+/**
+ * Clear specific payout override keys for this game (e.g. just the Net keys, or just one Teams
+ * slot's keys), reverting only that section back to the event's default -- a different Teams
+ * game's override on the same week, if any, is left alone.
+ */
+const resetGamePayoutOverrides = async (gameId, keys) => {
+    if (keys.length === 0)
+        return;
+    await config_1.default.query(`DELETE FROM GameOptions WHERE GameID = ? AND OptionName IN (${keys.map(() => '?').join(',')})`, [gameId, ...keys]);
+};
+exports.resetGamePayoutOverrides = resetGamePayoutOverrides;

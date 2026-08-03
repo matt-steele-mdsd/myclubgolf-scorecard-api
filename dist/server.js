@@ -43,7 +43,6 @@ const courseHistoryService_1 = require("./src/services/courseHistoryService");
 const cleanupService_1 = require("./src/services/cleanupService");
 const playerHistoryService_1 = require("./src/services/playerHistoryService");
 const skinsHistoryService_1 = require("./src/services/skinsHistoryService");
-const scorecardScanService_1 = require("./src/services/scorecardScanService");
 const courseService_1 = require("./src/services/courseService");
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
@@ -256,21 +255,6 @@ app.get('/api/courses', async (_req, res) => {
     catch (error) {
         console.error('Error fetching courses:', error.message);
         res.status(500).json({ error: 'Failed to fetch courses' });
-    }
-});
-// Scan a photo of a scorecard and extract course name + hole-by-hole par/handicap
-app.post('/api/courses/scan', async (req, res) => {
-    try {
-        const { imageBase64, mediaType } = req.body;
-        if (!imageBase64 || !mediaType) {
-            return res.status(400).json({ error: 'imageBase64 and mediaType are required' });
-        }
-        const scanned = await (0, scorecardScanService_1.scanScorecardImage)(imageBase64, mediaType);
-        res.json(scanned);
-    }
-    catch (error) {
-        console.error('Error scanning scorecard:', error.message);
-        res.status(500).json({ error: 'Failed to scan scorecard' });
     }
 });
 // Create a new course with its hole-by-hole par/handicap/yardage layout. If Add Course's GHIN
@@ -1973,17 +1957,17 @@ app.get('/api/team-games/:teamGameId/live-leaderboard', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch team game live leaderboard' });
     }
 });
-// Live standings for an Irish Rumble team game (thru, score vs. par so far) -- empty for
-// anything but an 'irish'-format team game.
+// Live standings for a fixed-keep-count team game -- 'custom' (plain 2-person Teams N) or
+// 'irish' (thru, score vs. par so far); empty for the '36/48' live-picker format.
 app.get('/api/team-games/:teamGameId/irish-leaderboard', async (req, res) => {
     try {
         const teamGameId = parseInt(req.params.teamGameId);
-        const rows = await (0, teamGameService_1.getIrishRumbleLiveLeaderboard)(teamGameId);
+        const rows = await (0, teamGameService_1.getFixedKeepLiveLeaderboard)(teamGameId);
         res.json(rows);
     }
     catch (error) {
-        console.error('Error fetching Irish Rumble live leaderboard:', error.message);
-        res.status(500).json({ error: 'Failed to fetch Irish Rumble live leaderboard' });
+        console.error('Error fetching fixed-keep live leaderboard:', error.message);
+        res.status(500).json({ error: 'Failed to fetch fixed-keep live leaderboard' });
     }
 });
 // Weeks that had at least one 36/48 team game with a rostered, scored player -- for the Best

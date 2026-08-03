@@ -23,7 +23,7 @@ exports.getIrishRumbleTeamsForPlayers = getIrishRumbleTeamsForPlayers;
 exports.getTeamGameHoleKeepCounts = getTeamGameHoleKeepCounts;
 exports.saveTeamGameHoleKeepCount = saveTeamGameHoleKeepCount;
 exports.getTeamGameLiveLeaderboard = getTeamGameLiveLeaderboard;
-exports.getIrishRumbleLiveLeaderboard = getIrishRumbleLiveLeaderboard;
+exports.getFixedKeepLiveLeaderboard = getFixedKeepLiveLeaderboard;
 exports.getBestPossibleWeeks = getBestPossibleWeeks;
 exports.getTeamBestPossible = getTeamBestPossible;
 const config_1 = __importDefault(require("../db/config"));
@@ -330,6 +330,9 @@ async function createRandomTeamGameTeams(teamGameId) {
     if (eligibility.stillPlaying.length > 0) {
         return { alreadySet: false, teams: [], stillPlaying: eligibility.stillPlaying.map((p) => p.name) };
     }
+    if (eligibility.eligiblePlayerIds.length < 4) {
+        return { alreadySet: false, teams: [], notEnoughPlayers: true };
+    }
     await config_1.default.query('DELETE FROM TeamGamePlayer WHERE TeamGameID = ?', [teamGameId]);
     const [playerRows] = await config_1.default.query(`SELECT PlayerID FROM Player WHERE PlayerID IN (?) ORDER BY RAND()`, [eligibility.eligiblePlayerIds.length > 0 ? eligibility.eligiblePlayerIds : [0]]);
     const PLAYERS_PER_TEAM = 2;
@@ -519,22 +522,17 @@ function pickPadPlayerIds(teamGameId, teamNumber, holeId, presentPlayerIds, padC
  * team's raw per-player-per-hole net scores (small dataset — a handful of teams, 18 holes, up to
  * 4 players each — safer than relying on window functions across MySQL/MariaDB versions).
  *
- * If this team game's "All players last hole" (Tommy Davis rule) is on, the last hole of the
- * round counts every rostered player's net score instead of just the kept-best `KeepCount` —
- * confirmed with the user (2026-07-08), independently settable per team game (e.g. off for
- * "Teams 1" but on for "Teams 2" in the same event, or for a one-off team game not tied to any
- * Options "Teams N" card at all). Stored directly on `TeamGame.LastHoleAll`, set at creation time
- * (see createTeamGame) — not inferred from Options by creation-order slot, since a one-off team
- * game has no Options card to infer from.
+ * If this team game's "All Scores 18th Hole" (Tommy Davis rule) is on, hole 18 counts every
+ * rostered player's net score instead of just the kept-best `KeepCount` — confirmed with the user
+ * (2026-07-08), independently settable per team game (e.g. off for "Teams 1" but on for "Teams 2"
+ * in the same event, or for a one-off team game not tied to any Options "Teams N" card at all).
+ * Stored directly on `TeamGame.LastHoleAll`, set at creation time (see createTeamGame) — not
+ * inferred from Options by creation-order slot, since a one-off team game has no Options card to
+ * infer from.
  *
- * "Last hole" is the highest HoleID this team actually has scores for (18 for a normal 18h round,
- * 9 for a 9f-only round, 18 for a 9b-only round), NOT hardcoded to 18 — but note this can't
- * detect a round that started on the back nine and wrapped to finish on the front (e.g. 10..18
- * then 1..9): nothing in the schema records which hole was actually played last, only the
- * physical HoleID, and the app's own hole-entry screens (app/game.tsx) don't support that
- * wraparound mode today anyway (side is always '18h'=1-18, '9f'=1-9, or '9b'=10-18, never a
- * wrap). If that scenario becomes real, this needs an actual "which hole finished the round"
- * signal added first.
+ * "Last hole" always means the physical 18th hole specifically (confirmed with Matt 2026-08-02) —
+ * not "whichever hole this team happened to finish on," so it simply never fires for a
+ * front-9-only round (hole 18 was never played) regardless of which hole the round started on.
  */
 async function getTeamGameResults(teamGameId) {
     const [tgRows] = await config_1.default.query(`SELECT tg.GameID, tg.KeepCount, tg.LastHoleAll, tg.Format FROM TeamGame tg WHERE tg.TeamGameID = ?`, [teamGameId]);
@@ -583,8 +581,7 @@ async function getTeamGameResults(teamGameId) {
         }
     }
     function sumSide(teamNumber, perHole, holeFilter) {
-        const holeIds = [...perHole.keys()];
-        const lastHole = lastHoleAll && holeIds.length > 0 ? Math.max(...holeIds) : null;
+        const lastHole = lastHoleAll ? 18 : null;
         let net = 0;
         let par = 0;
         for (const [holeId, present] of perHole) {
@@ -643,7 +640,6 @@ async function getTeamGameResults(teamGameId) {
     }
     const teamNumbers = new Set([...holeScores.keys(), ...rosterByTeam.keys()]);
     return Array.from(teamNumbers)
-        .sort((a, b) => a - b)
         .map((teamNumber) => {
         const perHole = holeScores.get(teamNumber) || new Map();
         const front = sumSide(teamNumber, perHole, (h) => h < 10);
@@ -660,7 +656,8 @@ async function getTeamGameResults(teamGameId) {
                 totalPar: scoreVsPar(front.net + back.net, front.par + back.par),
             } : {}),
         };
-    });
+    })
+        .sort((a, b) => a.total - b.total);
 }
 /**
  * The Net Score to Make Cut summary for a specific Teams N team game — unlike
@@ -704,17 +701,6 @@ async function getTeamGameScorecard(teamGameId, teamNumber, side) {
         const [keepRows] = await config_1.default.query('SELECT HoleID, KeepCount FROM TeamGameHoleKeep WHERE TeamGameID = ? AND TeamNumber = ?', [teamGameId, teamNumber]);
         holeKeep = new Map(keepRows.map((r) => [r.HoleID, r.KeepCount]));
     }
-    // The true last hole of the WHOLE round (not just whichever side is being viewed) — needed so
-    // the "All players last hole" rule only ever fires on the actual final hole (18 for a full
-    // round). Fixed 2026-07-09: computing this from the side-scoped rows below instead (Math.max of
-    // just the fetched Front-9 holes, say) mistook hole 9 for the round's last hole whenever viewing
-    // Front alone, wrongly counting every player's hole 9 score instead of just the kept-best —
-    // inflating the Front total (e.g. 73 shown vs the real kept-best 65) while Back/Total stayed
-    // correct (both happen to include the real last hole, 18, so the bug never showed there).
-    const [lastHoleRows] = await config_1.default.query(`SELECT MAX(sc.HoleID) AS maxHole FROM Score sc
-     INNER JOIN TeamGamePlayer tgp ON tgp.TeamGameID = ? AND tgp.TeamNumber = ? AND tgp.PlayerID = sc.PlayerID
-     WHERE sc.GameID = ?`, [teamGameId, teamNumber, gameId]);
-    const trueLastHole = lastHoleRows[0]?.maxHole ?? null;
     const [rows] = await config_1.default.query(`SELECT sc.PlayerID, CONCAT(p.LastName, ', ', p.FirstName) AS name, sc.HoleID, sc.NetScore
      FROM Score sc
      INNER JOIN TeamGamePlayer tgp ON tgp.TeamGameID = ? AND tgp.TeamNumber = ? AND tgp.PlayerID = sc.PlayerID
@@ -747,7 +733,11 @@ async function getTeamGameScorecard(teamGameId, teamNumber, side) {
         total: 0,
         isGhost: true,
     }));
-    const lastHole = lastHoleAll ? trueLastHole : null;
+    // "All Scores 18th Hole" always means the physical 18th hole, never whichever hole a team
+    // happened to finish on or whichever side is being viewed — a front-9-only round simply never
+    // triggers this rule, since hole 18 was never played (confirmed with Matt: the rule is tied to
+    // the actual 18th hole, not "the last hole of whatever was played").
+    const lastHole = lastHoleAll ? 18 : null;
     const holeTotals = {};
     for (const [holeId, presentIds] of byHole) {
         const padCount = usesLiveKeepPicker ? 0 : Math.max(0, maxRosterSize - presentIds.length);
@@ -995,18 +985,23 @@ async function getTeamGameLiveLeaderboard(teamGameId) {
     });
 }
 /**
- * Live standings for every team in an Irish Rumble team game: holes finished and net score vs.
- * par so far, using the same fixed hole-range keep rule and padding-for-a-short-handed-group
- * getTeamGameResults uses. Empty for anything but an 'irish'-format team game.
+ * Live standings for every team in a fixed-keep-count team game (the 'custom' format used by
+ * plain 2-person Teams N games, and 'irish'): holes finished and net score vs. par so far, using
+ * the same fixed/hole-varying keep rule, padding-for-a-short-handed-group, and "All Scores 18th
+ * Hole" (Tommy Davis) rule that getTeamGameResults uses. Empty for the '36/48' live-picker format,
+ * which has no fixed keep count to compute a running total from until each hole's live choice is
+ * made (see getTeamGameLiveLeaderboard instead).
  */
-async function getIrishRumbleLiveLeaderboard(teamGameId) {
-    const [tgRows] = await config_1.default.query('SELECT GameID, Format FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
+async function getFixedKeepLiveLeaderboard(teamGameId) {
+    const [tgRows] = await config_1.default.query('SELECT GameID, Format, KeepCount, LastHoleAll FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
     if (tgRows.length === 0)
         return [];
     const gameId = tgRows[0].GameID;
     const format = tgRows[0].Format;
-    if (!isIrishFormat(format))
+    if (format !== 'custom' && !isIrishFormat(format))
         return [];
+    const keepCount = tgRows[0].KeepCount;
+    const lastHoleAll = tgRows[0].LastHoleAll === 'T';
     const maxRosterSize = await getMaxRosterSize(teamGameId);
     const [gameRows] = await config_1.default.query('SELECT CourseID FROM Game WHERE GameID = ?', [gameId]);
     const courseId = gameRows[0]?.CourseID;
@@ -1052,8 +1047,10 @@ async function getIrishRumbleLiveLeaderboard(teamGameId) {
                 }
             }
             const sorted = nets.sort((a, b) => a - b);
-            const keepCount = (0, teamKeep_1.irishRumbleKeepCountForHole)(holeId);
-            const kept = sorted.slice(0, keepCount);
+            const effectiveKeepCount = isIrishFormat(format) ? (0, teamKeep_1.irishRumbleKeepCountForHole)(holeId) : keepCount;
+            // "All Scores 18th Hole" (Tommy Davis rule): every rostered score counts on hole 18
+            // instead of just the kept-best, same as getTeamGameResults.
+            const kept = lastHoleAll && holeId === 18 ? sorted : sorted.slice(0, effectiveKeepCount);
             netTotal += kept.reduce((sum, s) => sum + s, 0);
             parTotal += (parByHole.get(holeId) ?? 0) * kept.length;
         }

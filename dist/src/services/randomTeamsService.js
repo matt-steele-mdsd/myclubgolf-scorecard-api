@@ -258,6 +258,9 @@ async function createRandomTeams(gameId) {
     if (eligibility.stillPlaying.length > 0) {
         return { alreadySet: false, teams: [], stillPlaying: eligibility.stillPlaying.map((p) => p.name) };
     }
+    if (eligibility.eligiblePlayerIds.length < 4) {
+        return { alreadySet: false, teams: [], notEnoughPlayers: true };
+    }
     const teamGameId = await (0, teamService_1.getOrCreateDefaultTeamGameId)(gameId);
     await config_1.default.query('DELETE FROM TeamGamePlayer WHERE TeamGameID = ?', [teamGameId]);
     const [playerRows] = await config_1.default.query(`SELECT PlayerID FROM Player WHERE PlayerID IN (?) ORDER BY RAND()`, [eligibility.eligiblePlayerIds.length > 0 ? eligibility.eligiblePlayerIds : [0]]);

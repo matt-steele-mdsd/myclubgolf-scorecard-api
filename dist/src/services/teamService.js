@@ -103,13 +103,15 @@ async function getTeamResults(gameId) {
             rosterByTeam.set(r.TeamNumber, []);
         rosterByTeam.get(r.TeamNumber).push(r.name);
     }
-    return totalsRows.map((r) => ({
+    return totalsRows
+        .map((r) => ({
         teamId: r.TeamNumber,
         front: r.front,
         back: r.back,
         total: r.total,
         players: rosterByTeam.get(r.TeamNumber) || [],
-    }));
+    }))
+        .sort((a, b) => a.total - b.total);
 }
 /**
  * Replace all teams for a game — mirrors saveteams.php. `teams` is an array of

@@ -12,6 +12,7 @@ const config_1 = __importDefault(require("../db/config"));
 const payout_1 = require("../utils/payout");
 const weekResultsService_1 = require("./weekResultsService");
 const optionsService_1 = require("./optionsService");
+const randomTeamsService_1 = require("./randomTeamsService");
 const TEAM_SLOTS = [
     { prefix: 'teams', slot: 1 },
     { prefix: 'teams2', slot: 2 },
@@ -97,11 +98,16 @@ async function syncOneTeamSlotPayout(gameId, prefix, slot, eventOptions, payoutV
          GROUP BY t.TeamNumber, s.HoleID
        ) t2 GROUP BY t2.TeamNumber
      ) b ON b.TeamNumber = allTeams.TeamNumber`, [teamGameId, gameId, teamGameId, gameId, teamGameId]);
-    // Distinct players, not summed roster sizes -- mirrors weekresults.tsx's own participantCount
-    // logic (an odd-numbered field duplicates one player onto a 2nd team for fairness, but they
-    // only pay into the pot once).
-    const distinctPlayerCount = new Set(rosterRows.map((r) => r.PlayerID)).size;
-    const pot = payIn * distinctPlayerCount;
+    // Pot size is based on everyone who actually played this format that day, not just who made
+    // the drawn team roster -- a random-assignment team game excludes anyone over the Net Score to
+    // Make Cut line from the roster entirely (see createRandomTeamGameTeams), but the $X buy-in
+    // applies to every participant regardless of whether they personally made the cut (confirmed
+    // with Matt: the cut only gates who can WIN, not who pays in). getGameEligibility's
+    // eligiblePlayerIds + excludedOverCut together give the full field that finished this side,
+    // cut or no cut.
+    const eligibility = await (0, randomTeamsService_1.getGameEligibility)(gameId, prefix);
+    const potPlayerCount = eligibility.eligiblePlayerIds.length + eligibility.excludedOverCut.length;
+    const pot = payIn * potPlayerCount;
     const places = Math.max(0, Math.min(10, Number(payoutValues[`${prefix}_places`]) || 0));
     const pctArr = Array.from({ length: places }, (_, i) => payoutValues[`${prefix}_pct${i + 1}`] ?? '');
     const placeAmounts = (0, payout_1.computePlaceAmounts)(pot, places, pctArr);

@@ -5,11 +5,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getHoleInOneWinners = getHoleInOneWinners;
 exports.getHoleInOneCelebration = getHoleInOneCelebration;
+exports.getWeekPurse = getWeekPurse;
 exports.syncGamePayoutLedger = syncGamePayoutLedger;
 exports.getPayoutReviewForEvent = getPayoutReviewForEvent;
 exports.getSeasonPayoutSummary = getSeasonPayoutSummary;
 const config_1 = __importDefault(require("../db/config"));
 const payout_1 = require("../utils/payout");
+const money_1 = require("../utils/money");
 const weekResultsService_1 = require("./weekResultsService");
 const optionsService_1 = require("./optionsService");
 const randomTeamsService_1 = require("./randomTeamsService");
@@ -25,10 +27,21 @@ async function getGameEventId(gameId) {
 }
 /** Replace this game+type's ledger rows wholesale -- the delete-then-reinsert the admin asked
  * for instead of a "finalize" step. Amounts of 0 (or a game type no longer in play, e.g. a
- * removed team game) just result in no rows, which is the correct "nothing to pay" state. */
+ * removed team game) just result in no rows, which is the correct "nothing to pay" state.
+ *
+ * Every amount is truncated to 2 decimals here -- the one chokepoint every payout type (Net,
+ * every Teams slot, Skins, Gross Skins, Hole-in-One) funnels through before hitting the DB --
+ * rather than only at display time. Splitting a pot rarely divides evenly (e.g. $125 / 3 =
+ * $41.666...); storing the raw split and truncating only for display meant each *individual*
+ * amount looked right on screen, but summing several raw amounts and truncating the total (e.g.
+ * this session's new Total Payouts footers) could come out a few cents higher than the sum of
+ * what actually gets truncated-and-paid person by person -- confirmed real 2026-08-05, a $375.03
+ * total against a $375.00 pot. Never round up: the admin must never owe more than was collected. */
 async function syncOnePayoutType(gameId, gameType, amounts) {
     await config_1.default.query('DELETE FROM PlayerPayouts WHERE GameID = ? AND GameType = ?', [gameId, gameType]);
-    const entries = Array.from(amounts.entries()).filter(([, amt]) => amt > 0.001);
+    const entries = Array.from(amounts.entries())
+        .map(([playerId, amount]) => [playerId, (0, money_1.truncateMoneyValue)(amount)])
+        .filter(([, amt]) => amt > 0.001);
     if (entries.length === 0)
         return;
     const values = entries.map(([playerId, amount]) => [gameId, playerId, gameType, amount]);
@@ -150,6 +163,30 @@ async function syncSkinsPayout(gameId, eventOptions) {
     const amounts = new Map(skinsRows.map((r) => [r.PlayerID, r.skinCount * perSkin]));
     await syncOnePayoutType(gameId, 'skins', amounts);
 }
+/** Gross Skins' own pot -- same split logic as syncSkinsPayout, but sourced from
+ * GrossSkinsResult/GSkinsPaid (a separately-paid-for, much smaller field) instead of
+ * Skins/OptOut, and gated on the event's Gross Skins toggle being on at all. Deliberately reads
+ * GrossSkinsResult, NOT the legacy GSkins table -- see grossSkinsService.ts's module docstring
+ * for why they must stay separate. */
+async function syncGrossSkinsPayout(gameId, groupId, gameDate, eventOptions) {
+    if (!eventOptions.gross_skins_enabled) {
+        await syncOnePayoutType(gameId, 'grossskins', new Map());
+        return;
+    }
+    const [countRows] = await config_1.default.query(`SELECT (SELECT COUNT(*) FROM GSkinsPaid WHERE GroupID = ? AND TeeDate = ?) AS numPaid,
+            (SELECT COUNT(*) FROM GrossSkinsResult WHERE GameID = ? AND Validated = 'T') AS numSkins`, [groupId, gameDate, gameId]);
+    const payIn = Number(eventOptions.gross_skins_payin) || 0;
+    const numPaid = countRows[0]?.numPaid ?? 0;
+    const numSkins = countRows[0]?.numSkins ?? 0;
+    if (payIn <= 0 || numSkins === 0 || numPaid === 0) {
+        await syncOnePayoutType(gameId, 'grossskins', new Map());
+        return;
+    }
+    const perSkin = (numPaid * payIn) / numSkins;
+    const [skinsRows] = await config_1.default.query(`SELECT gs.PlayerID, COUNT(*) AS skinCount FROM GrossSkinsResult gs WHERE gs.GameID = ? AND gs.Validated = 'T' GROUP BY gs.PlayerID`, [gameId]);
+    const amounts = new Map(skinsRows.map((r) => [r.PlayerID, r.skinCount * perSkin]));
+    await syncOnePayoutType(gameId, 'grossskins', amounts);
+}
 /** Every hole-in-one (gross Score = 1) recorded for a game, excluding opted-out players. */
 async function getHoleInOneWinners(gameId) {
     const [rows] = await config_1.default.query(`SELECT s.PlayerID AS playerId, CONCAT(p.LastName, ', ', p.FirstName) AS name, s.HoleID AS holeId
@@ -189,6 +226,14 @@ async function computeTotalDayPot(gameId, eventOptions) {
        WHERE s.GameID = ? AND s.PlayerID NOT IN (SELECT o.PlayerID FROM OptOut o WHERE o.GameID = ?)`, [gameId, gameId]);
         total += skinsPayIn * (countRows[0]?.numPlayers ?? 0);
     }
+    const grossSkinsPayIn = Number(eventOptions.gross_skins_payin) || 0;
+    if (eventOptions.gross_skins_enabled && grossSkinsPayIn > 0) {
+        const [gameRows] = await config_1.default.query('SELECT GroupID, GameDate FROM Game WHERE GameID = ?', [gameId]);
+        if (gameRows.length > 0) {
+            const [countRows] = await config_1.default.query('SELECT COUNT(*) AS numPaid FROM GSkinsPaid WHERE GroupID = ? AND TeeDate = ?', [gameRows[0].GroupID, gameRows[0].GameDate]);
+            total += grossSkinsPayIn * (countRows[0]?.numPaid ?? 0);
+        }
+    }
     return total;
 }
 async function getHoleInOneCelebration(gameId) {
@@ -201,6 +246,39 @@ async function getHoleInOneCelebration(gameId) {
     const eventOptions = await (0, optionsService_1.getEventOptions)(eventId);
     const totalPot = await computeTotalDayPot(gameId, eventOptions);
     return { winners, totalPot };
+}
+/**
+ * Everyone's total winnings for one week, across every payout type at once (Net, every Teams
+ * slot, Skins, Gross Skins, Hole-in-One) -- what the admin actually Venmos people, in one place
+ * instead of flipping between the Skins/Teams/Gross Skins tabs and adding it up by hand
+ * (confirmed with Matt 2026-08-04: buy-ins are collected up front in cash, so this is winnings
+ * only, not a paid-vs-won net balance like `getSeasonPayoutSummary`).
+ *
+ * Purely a read over `PlayerPayouts`, which `syncGamePayoutLedger` already keeps current every
+ * time Week Results loads a week -- no separate recompute needed here, unlike Skins/Gross Skins'
+ * own hole-by-hole/summary views which store results in their own dedicated tables.
+ */
+async function getWeekPurse(gameId) {
+    const [rows] = await config_1.default.query(`SELECT pp.PlayerID, CONCAT(p.LastName, ', ', p.FirstName) AS name, pp.GameType, pp.Amount
+     FROM PlayerPayouts pp
+     INNER JOIN Player p ON p.PlayerID = pp.PlayerID
+     WHERE pp.GameID = ?
+     ORDER BY p.LastName, p.FirstName`, [gameId]);
+    const byPlayer = new Map();
+    for (const r of rows) {
+        if (!byPlayer.has(r.PlayerID)) {
+            byPlayer.set(r.PlayerID, { playerId: r.PlayerID, name: r.name, total: 0, breakdown: [] });
+        }
+        const row = byPlayer.get(r.PlayerID);
+        const amount = Number(r.Amount);
+        if (amount <= 0.001)
+            continue;
+        row.breakdown.push({ gameType: r.GameType, amount });
+        row.total += amount;
+    }
+    return Array.from(byPlayer.values())
+        .filter((row) => row.total > 0.001)
+        .sort((a, b) => b.total - a.total);
 }
 /**
  * Recompute and persist every payout type (Net, each Teams slot, Skins) for one game/week,
@@ -227,6 +305,7 @@ async function syncGamePayoutLedger(gameId) {
             await syncOnePayoutType(gameId, prefix, new Map());
         }
         await syncOnePayoutType(gameId, 'skins', new Map());
+        await syncOnePayoutType(gameId, 'grossskins', new Map());
         const share = totalPot / holeInOneWinners.length;
         await syncOnePayoutType(gameId, 'holeinone', new Map(holeInOneWinners.map((w) => [w.playerId, share])));
         return;
@@ -236,6 +315,10 @@ async function syncGamePayoutLedger(gameId) {
         await syncOneTeamSlotPayout(gameId, prefix, slot, eventOptions, payoutValues);
     }
     await syncSkinsPayout(gameId, eventOptions);
+    const [gameRows] = await config_1.default.query('SELECT GroupID, GameDate FROM Game WHERE GameID = ?', [gameId]);
+    if (gameRows.length > 0) {
+        await syncGrossSkinsPayout(gameId, gameRows[0].GroupID, gameRows[0].GameDate, eventOptions);
+    }
 }
 /**
  * Net + Teams payout totals (Skins excluded -- flat $5 all year, nothing to review) for every
@@ -330,9 +413,14 @@ async function getSeasonPayoutSummary(eventId) {
      INNER JOIN TeamGame tg ON tg.TeamGameID = tgp.TeamGameID
      INNER JOIN Game g ON g.GameID = tg.GameID
      WHERE g.GroupID = ?`, [eventId]);
+    // Gross Skins paid-in is tracked directly (GSkinsPaid, one explicit row per player per tee
+    // date), unlike net Skins/Net above which derive "paid" from participation -- gross skins
+    // participation isn't everyone who played, only whoever was marked paid for it that week.
+    const [grossSkinsPaidRows] = await config_1.default.query(`SELECT PlayerID, COUNT(*) AS gamesPlayed FROM GSkinsPaid WHERE GroupID = ? GROUP BY PlayerID`, [eventId]);
     const eventOptions = await (0, optionsService_1.getEventOptions)(eventId);
     const netPayIn = Number(eventOptions.game_netpayin) || 0;
     const skinsPayIn = Number(eventOptions.skins_payin) || 0;
+    const grossSkinsPayIn = eventOptions.gross_skins_enabled ? Number(eventOptions.gross_skins_payin) || 0 : 0;
     const paidById = new Map();
     const addPaid = (rows, rate) => {
         for (const r of rows) {
@@ -341,6 +429,7 @@ async function getSeasonPayoutSummary(eventId) {
     };
     addPaid(netPaidRows, netPayIn);
     addPaid(skinsPaidRows, skinsPayIn);
+    addPaid(grossSkinsPaidRows, grossSkinsPayIn);
     for (const r of teamAppearanceRows) {
         const slot = r.Slot ?? 1;
         const prefix = slot === 1 ? 'teams' : `teams${slot}`;

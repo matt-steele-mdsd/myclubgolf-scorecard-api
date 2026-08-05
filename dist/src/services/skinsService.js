@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getScoredHoles = getScoredHoles;
+exports.findFollowUpHole = findFollowUpHole;
 exports.getSkinsForHole = getSkinsForHole;
 exports.invalidateSkinsCache = invalidateSkinsCache;
 exports.recalculateAllSkins = recalculateAllSkins;
@@ -12,6 +13,7 @@ exports.getSkinsTotals = getSkinsTotals;
 const config_1 = __importDefault(require("../db/config"));
 const optionsService_1 = require("./optionsService");
 const handicap_1 = require("../utils/handicap");
+const money_1 = require("../utils/money");
 /** Mirrors app/game.tsx's reading of the skins_* Options into the 3 modes computeHoleScoring
  * switches on — a single source of truth so a hole's skins score can be recomputed live from
  * gross + par + stroke index + handicap, without depending on whatever value a caller may (or,
@@ -107,6 +109,8 @@ async function getValidationMode(gameId) {
  * Find the next hole to check for skin validation, skipping to the other side's first
  * hole if this side hasn't been played (mirrors skins.php's wraparound logic so a
  * front-9-only or back-9-only round still validates against a hole that was played).
+ * Exported for grossSkinsService.ts's follow-up validation, which uses the identical
+ * wraparound rule against gross score/par instead of net.
  */
 async function findFollowUpHole(gameId, holeId) {
     if (holeId === 18) {
@@ -388,9 +392,12 @@ async function getSkinsTotals(gameId) {
     return {
         perSkin,
         validationMode,
+        // Truncated, not rounded -- never pay out more than the pot actually collected (a per-skin
+        // rate rarely divides evenly; confirmed real 2026-08-05 this was the source of a payout
+        // total showing a few cents more than was actually brought in).
         rows: Array.from(byPlayer.values()).map((row) => ({
             ...row,
-            payout: perSkin > 0 ? row.skins * perSkin : null,
+            payout: perSkin > 0 ? (0, money_1.truncateMoneyValue)(row.skins * perSkin) : null,
         })),
     };
 }

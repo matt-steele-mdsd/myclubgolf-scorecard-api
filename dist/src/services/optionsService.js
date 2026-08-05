@@ -83,6 +83,8 @@ const DEFAULTS = {
     skins_nonepar3: false,
     skins_halfall: false,
     skins_maxone: false,
+    gross_skins_enabled: false,
+    gross_skins_payin: '',
     ups_enabled: false,
     ups_minevents: '',
     ups_numscores: '',
@@ -100,6 +102,7 @@ const BOOLEAN_KEYS = [
     'teams_partnerteams', 'teams2_partnerteams', 'teams3_partnerteams', 'teams4_partnerteams',
     'skins_maxonestroke', 'skins_validation_score', 'skins_validation_par',
     'skins_halfpar3', 'skins_nonepar3', 'skins_halfall', 'skins_maxone',
+    'gross_skins_enabled',
     'ups_enabled', 'ups_includeprioryears', 'ups_majorsauto', 'checkpaid',
     'hidden_from_search',
 ];
@@ -118,7 +121,7 @@ const TEXT_KEYS = [
     'teams4_netcut', 'teams4_netcut9', 'teams4_payin', 'teams4_places',
     'teams4_pct1', 'teams4_pct2', 'teams4_pct3', 'teams4_pct4',
     'teams4_teamsize', 'teams4_keepcount', 'teams4_format',
-    'skins_payin',
+    'skins_payin', 'gross_skins_payin',
     'ups_minevents', 'ups_numscores', 'ups_numplayers', 'ups_yearsexemption',
 ];
 /** Get an event's options (mirrors options.php), falling back to legacy defaults for any unset option. */

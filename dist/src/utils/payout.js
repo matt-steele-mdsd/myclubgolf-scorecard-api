@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.computePlaceAmounts = computePlaceAmounts;
 exports.computeTiePayouts = computeTiePayouts;
+const money_1 = require("./money");
 /**
  * Dollar amount awarded to each paid place, honoring configured percentages of the pot —
  * falling back to an equal split across places when no percentage has been set for any of them.
@@ -26,6 +27,12 @@ function computePlaceAmounts(pot, places, pctStrings) {
  * splitting a place's money whenever multiple entries tie for it — e.g. two entries tied for
  * the single paid place split the whole pot between them; a two-way tie for 2nd (with 3 places
  * paid) combines the 2nd + 3rd place shares and splits that between the two.
+ *
+ * Each entry's `amount` is truncated (never rounded) to 2 decimals -- a pot rarely divides evenly
+ * across places/ties, and rounding up would pay out more than was actually collected. This is the
+ * one function both the server (payoutLedgerService.ts, before storing) and the client
+ * (weekresults.tsx, for live Adjust Payout previews) funnel through, so fixing it here keeps both
+ * consistent with each other and with what actually gets paid.
  */
 function computeTiePayouts(entries, placeAmounts) {
     const sorted = [...entries].sort((a, b) => a.value - b.value);
@@ -38,7 +45,7 @@ function computeTiePayouts(entries, placeAmounts) {
         const groupSize = j - i + 1;
         const positionsInMoney = Math.max(0, Math.min(groupSize, placeAmounts.length - i));
         const combinedAmount = placeAmounts.slice(i, i + positionsInMoney).reduce((a, b) => a + b, 0);
-        const perEntry = positionsInMoney > 0 ? combinedAmount / groupSize : 0;
+        const perEntry = positionsInMoney > 0 ? (0, money_1.truncateMoneyValue)(combinedAmount / groupSize) : 0;
         for (let k = i; k <= j; k++) {
             results.push({ key: sorted[k].key, value: sorted[k].value, rank: i + 1, amount: perEntry });
         }

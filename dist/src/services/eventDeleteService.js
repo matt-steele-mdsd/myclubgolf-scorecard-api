@@ -55,6 +55,8 @@ async function deleteEvent(eventId) {
             await conn.query('DELETE FROM Game WHERE GroupID = ?', [eventId]);
         }
         await conn.query('DELETE FROM GSkins WHERE GroupID = ?', [eventId]);
+        await conn.query('DELETE FROM GrossSkinsResult WHERE GroupID = ?', [eventId]);
+        await conn.query('DELETE FROM GSkinsPaid WHERE GroupID = ?', [eventId]);
         await conn.query('DELETE FROM TeeTimes WHERE GroupID = ?', [eventId]);
         await conn.query('DELETE FROM PaidTracker WHERE GroupID = ?', [eventId]);
         await conn.query('DELETE FROM PlayerStatus WHERE GroupID = ?', [eventId]);

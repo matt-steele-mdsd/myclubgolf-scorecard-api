@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.savePlayerScores = savePlayerScores;
 exports.deletePlayerHoleScores = deletePlayerHoleScores;
 exports.getPlayerScores = getPlayerScores;
+exports.getPlayerScorecard = getPlayerScorecard;
 const config_1 = __importDefault(require("../db/config"));
 const skinsService_1 = require("./skinsService");
 /**
@@ -83,4 +84,26 @@ async function getPlayerScores(gameId, playerId) {
         console.error('Error getting player scores:', error.message);
         return {};
     }
+}
+/**
+ * One player's hole-by-hole gross AND net scores for a side of a game -- mirrors
+ * teamService.ts's getTeamScorecard (same side-filtered query shape, same F/B/T modal this
+ * powers), but for a single player and both score types instead of one team's net-only roster.
+ */
+async function getPlayerScorecard(gameId, playerId, side) {
+    const holeStart = side === 'B' ? 10 : 1;
+    const holeEnd = side === 'F' ? 9 : 18;
+    const [rows] = await config_1.default.query(`SELECT HoleID, Score, NetScore FROM Score
+     WHERE GameID = ? AND PlayerID = ? AND HoleID >= ? AND HoleID <= ?
+     ORDER BY HoleID`, [gameId, playerId, holeStart, holeEnd]);
+    let totalGross = 0;
+    let totalNet = 0;
+    const holes = rows.map((r) => {
+        const gross = r.Score;
+        const net = Number(r.NetScore);
+        totalGross += gross;
+        totalNet += net;
+        return { hole: r.HoleID, gross, net };
+    });
+    return { holes, totalGross, totalNet };
 }

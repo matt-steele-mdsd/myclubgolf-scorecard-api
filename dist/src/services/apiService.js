@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setPlayerGhinSkip = exports.getGhinPlayerList = exports.recheckNaughtyPosting = exports.getNaughtyList = exports.addTeeTime = exports.setPaidTracker = exports.getPaidTrackerList = exports.getTeeTimes = exports.getCourses = exports.getPlayerCourseHandicaps = exports.getPlayerHandicap = exports.getPlayerRecentSkins = exports.getPlayerSkinsStats = exports.getPlayerRounds = exports.getPlayerStats = exports.getAllPlayersWithHistory = exports.deleteEmptyGames = exports.getEmptyGames = exports.deleteOrphanedRows = exports.getOrphanedRows = exports.deleteOrphanedEventLinks = exports.getOrphanedEventLinks = exports.deleteOrphanedPlayers = exports.getInvalidNamePlayers = exports.getOrphanedPlayers = exports.ignoreMergeSuggestion = exports.getMergeSuggestions = exports.mergePlayers = exports.getMergePreview = exports.searchPlayersInEvent = exports.searchAllPlayers = exports.renamePlayer = exports.getPlayerListForEvent = exports.linkPlayers = exports.getUnlinkedPlayers = exports.assignGuestPlayer = exports.addPlayer = exports.getEventPlayers = exports.getCourseList = exports.getGhinCourseDetail = exports.searchGhinCourses = exports.createCourse = exports.scanScorecard = exports.renameEventCourse = exports.renameEvent = exports.getEventById = exports.deleteEvent = exports.getAllEventsWithCounts = exports.searchAllEventsForMaster = exports.searchEvents = void 0;
-exports.getTeamResults = exports.getTeamStatus = exports.getWeekResults = exports.getWhatIfResults = exports.getWhatIfTeamGameOptions = exports.swapPlayersInGame = exports.getGameSwapPreview = exports.getPlayersForGame = exports.getGamesForEvent = exports.getDefaultScorecardSide = exports.getLeaderboard = exports.updateGameCourse = exports.ensureGameForDate = exports.getTeamGameWeeks = exports.getLatestGame = exports.createEvent = exports.deleteCalendarDay = exports.setCalendarDay = exports.getEventCalendar = exports.deleteUpsCupWinner = exports.setUpsCupWinner = exports.getUpsCupWinners = exports.getHoleBirdieDetail = exports.getPlayerBirdieStatus = exports.getBirdieLeaderboard = exports.removePlayerPaid = exports.setPlayerPaid = exports.getPaidPlayers = exports.getCurrentStandings = exports.getIneligiblePlayers = exports.getUpsPoints = exports.getMajorWinners = exports.setAdminPassword = exports.verifyAdminPassword = exports.getAdminPasswordStatus = exports.getPayoutReview = exports.getSeasonPayoutSummary = exports.syncGamePayouts = exports.resetGamePayoutOptions = exports.saveGamePayoutOptions = exports.getGamePayoutOptions = exports.saveEventOptions = exports.getEventOptions = exports.savePlayerStatus = exports.getPlayerStatus = exports.getGhinYears = exports.getGhinSummary = exports.getEasyGhinLinks = exports.linkPlayerGhin = exports.searchGhin = void 0;
-exports.getFeedback = exports.submitFeedback = exports.deletePlayerHoleScores = exports.savePlayerHoleScores = exports.getPlayerGameScores = exports.getCourseHoleHistory = exports.getCourseDetails = exports.getPlayingGroup = exports.upsertPlayingGroup = exports.addOrUpdateGroupTeam = exports.saveGameHandicap = exports.getOrCreateGame = exports.createRandomTeams = exports.getShowTeamsListing = exports.getRandomTeamsListing = exports.getRandomTeamsStatus = exports.removePlayers = exports.getActivePlayers = exports.recalculateSkins = exports.getGameSkinsSummary = exports.getSkinsTotals = exports.getSkinsForHole = exports.getScoredHoles = exports.getGameScorecard = exports.getTeamGameScorecard = exports.getTeamGameCutSummary = exports.getTeamGameResults = exports.createRandomTeamGameTeams = exports.getTeamGameRoster = exports.saveManualTeamGameTeams = exports.getTeamGameAssignments = exports.getTeamGameStatus = exports.deleteTeamGame = exports.skipTeamGameSlot = exports.createTeamGame = exports.listTeamGames = exports.getTeamScorecard = exports.saveTeams = exports.getTeamAssignments = exports.getOptedOutPlayers = exports.unignoreCleanupItem = exports.getIgnoredCleanupItems = exports.ignoreCleanupCandidates = exports.deleteCleanupCandidates = exports.getAllEventsCleanupCandidates = exports.getCleanupCandidates = exports.getCutSummary = void 0;
+exports.getNaughtyList = exports.addTeeTime = exports.setGrossSkinsPaid = exports.getGrossSkinsPaidList = exports.getGrossSkinsTrackerDates = exports.setPaidTracker = exports.getPaidTrackerList = exports.getTeeTimes = exports.getCourses = exports.getPlayerCourseHandicaps = exports.getGamePlayerHandicap = exports.getPlayerHandicap = exports.getPlayerRecentSkins = exports.getPlayerSkinsStats = exports.getPlayerRounds = exports.getPlayerStats = exports.getAllPlayersWithHistory = exports.deleteEmptyGames = exports.getEmptyGames = exports.deleteOrphanedRows = exports.getOrphanedRows = exports.deleteOrphanedEventLinks = exports.getOrphanedEventLinks = exports.deleteOrphanedPlayers = exports.getInvalidNamePlayers = exports.getOrphanedPlayers = exports.ignoreMergeSuggestion = exports.getMergeSuggestions = exports.mergePlayers = exports.getMergePreview = exports.searchPlayersInEvent = exports.searchAllPlayers = exports.renamePlayer = exports.getPlayerListForEvent = exports.linkPlayers = exports.getUnlinkedPlayers = exports.assignGuestPlayer = exports.addPlayer = exports.getEventPlayers = exports.getCourseList = exports.getGhinCourseDetail = exports.searchGhinCourses = exports.createCourse = exports.renameEventCourse = exports.renameEvent = exports.getEventById = exports.deleteEvent = exports.getAllEventsWithCounts = exports.searchAllEventsForMaster = exports.searchEvents = void 0;
+exports.swapPlayersInGame = exports.getGameSwapPreview = exports.getPlayersForGame = exports.getGamesForEvent = exports.getDefaultScorecardSide = exports.getLeaderboard = exports.updateGameCourse = exports.ensureGameForDate = exports.getTeamGameWeeks = exports.getLatestGame = exports.createEvent = exports.deleteCalendarDay = exports.setCalendarDay = exports.getEventCalendar = exports.deleteUpsCupWinner = exports.setUpsCupWinner = exports.getUpsCupWinners = exports.getHoleBirdieDetail = exports.getPlayerBirdieStatus = exports.getBirdieLeaderboard = exports.removePlayerPaid = exports.setPlayerPaid = exports.getPaidPlayers = exports.getCurrentStandings = exports.getIneligiblePlayers = exports.getUpsPoints = exports.getMajorWinners = exports.setAdminPassword = exports.verifyAdminPassword = exports.getAdminPasswordStatus = exports.getPayoutReview = exports.getSeasonPayoutSummary = exports.getHoleInOneCelebration = exports.getWeekPurse = exports.syncGamePayouts = exports.resetGamePayoutOptions = exports.saveGamePayoutOptions = exports.getGamePayoutOptions = exports.saveEventOptions = exports.getEventOptions = exports.savePlayerStatus = exports.getPlayerStatus = exports.getGhinYears = exports.getGhinSummary = exports.getEasyGhinLinks = exports.linkPlayerGhin = exports.searchGhin = exports.setPlayerGhinSkip = exports.getGhinPlayerList = exports.recheckNaughtyPosting = void 0;
+exports.getRandomTeamsStatus = exports.removePlayers = exports.getActivePlayers = exports.recalculateGrossSkins = exports.getGrossSkinsTotals = exports.getGrossSkinsForHole = exports.getGrossSkinsVisible = exports.recalculateSkins = exports.getGameSkinsSummary = exports.getSkinsTotals = exports.getSkinsForHole = exports.getScoredHoles = exports.getGameScorecard = exports.saveTeamGameHoleKeep = exports.getFixedKeepLiveLeaderboard = exports.getIrishRumbleTeamsForGame = exports.getTeamGameHoleKeep = exports.getKeepTeamsForGame = exports.getBestPossibleWeeks = exports.getTeamBestPossible = exports.getTeamGameLiveLeaderboard = exports.getTeamGameScorecard = exports.getTeamGameCutSummary = exports.getTeamGameResults = exports.createRandomTeamGameTeams = exports.getTeamGameRoster = exports.saveManualTeamGameTeams = exports.getTeamGameAssignments = exports.getTeamGameStatus = exports.deleteTeamGame = exports.skipTeamGameSlot = exports.createTeamGame = exports.listTeamGames = exports.getPlayerScorecard = exports.getTeamScorecard = exports.saveTeams = exports.getTeamAssignments = exports.getOptedOutPlayers = exports.unignoreCleanupItem = exports.getIgnoredCleanupItems = exports.ignoreCleanupCandidates = exports.deleteCleanupCandidates = exports.getAllEventsCleanupCandidates = exports.getCleanupCandidates = exports.getCutSummary = exports.getTeamResults = exports.getTeamStatus = exports.getWeekResults = exports.getWhatIfResults = exports.getWhatIfTeamGameOptions = void 0;
+exports.getFeedback = exports.submitFeedback = exports.deletePlayerHoleScores = exports.savePlayerHoleScores = exports.getPlayerGameScores = exports.getCourseHoleHistory = exports.getCourseDetails = exports.getPlayingGroup = exports.upsertPlayingGroup = exports.addOrUpdateGroupTeam = exports.saveGameHandicap = exports.getOrCreateGame = exports.createRandomTeams = exports.getShowTeamsListing = exports.getRandomTeamsListing = void 0;
 // Production API URL - always use this for built apps
 const API_URL = 'https://api.myclubgolf.com/api';
 /**
@@ -118,23 +119,6 @@ const renameEventCourse = async (eventId, courseName) => {
     }
 };
 exports.renameEventCourse = renameEventCourse;
-/**
- * Scan a photo of a golf scorecard and extract the course name plus each hole's
- * par and handicap, via the API server (Claude vision).
- */
-const scanScorecard = async (imageBase64, mediaType) => {
-    const response = await fetch(`${API_URL}/courses/scan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64, mediaType }),
-    });
-    if (!response.ok) {
-        const data = (await response.json().catch(() => ({})));
-        throw new Error(data.error || 'Failed to scan scorecard');
-    }
-    return (await response.json());
-};
-exports.scanScorecard = scanScorecard;
 /**
  * Create a new course with its hole-by-hole par/handicap/yardage layout via the API server.
  * `ghinInfo`/`ghinTeeSets` are only passed when the course came from GHIN's "Search GHIN Course
@@ -673,6 +657,24 @@ const getPlayerHandicap = async (playerId) => {
     }
 };
 exports.getPlayerHandicap = getPlayerHandicap;
+/** A player's handicap already saved for THIS specific game -- null if they've never had one
+ * saved for this exact round. Used by Start Game to skip the tee/handicap prompt entirely when
+ * re-adding someone who already went through it earlier today (resuming after a crash, or being
+ * re-picked after Resume Group), instead of re-asking every time. */
+const getGamePlayerHandicap = async (gameId, playerId) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/handicap/${playerId}`, { cache: 'no-store' });
+        if (!response.ok)
+            return null;
+        const data = (await response.json());
+        return data.hdcp ?? null;
+    }
+    catch (error) {
+        console.error('Error fetching game player handicap:', error);
+        return null;
+    }
+};
+exports.getGamePlayerHandicap = getGamePlayerHandicap;
 /**
  * Get a GHIN-linked player's live index + Course Handicap per tee via the API server. Returns
  * null if the player has no GHIN on file or this course has no known GHIN course id — caller
@@ -759,6 +761,58 @@ const setPaidTracker = async (eventId, teeDate, playerId, paid) => {
     }
 };
 exports.setPaidTracker = setPaidTracker;
+/**
+ * Date list for Gross Skins Tracker's date picker -- last month through the future (unlike Paid
+ * Tracker's future-only date list), with a suggested default sourced from the Setup Calendar's
+ * next 'event'/'major' day.
+ */
+const getGrossSkinsTrackerDates = async (eventId) => {
+    try {
+        const response = await fetch(`${API_URL}/events/${eventId}/gross-skins-tracker-dates`);
+        if (!response.ok)
+            return { dates: [], defaultDate: null };
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching gross skins tracker dates:', error);
+        return { dates: [], defaultDate: null };
+    }
+};
+exports.getGrossSkinsTrackerDates = getGrossSkinsTrackerDates;
+/**
+ * Get everyone registered for a tee date, with Gross Skins paid status, via the API server.
+ */
+const getGrossSkinsPaidList = async (eventId, teeDate) => {
+    try {
+        const response = await fetch(`${API_URL}/events/${eventId}/gross-skins-tracker?teeDate=${teeDate}`);
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching gross skins paid list:', error);
+        return [];
+    }
+};
+exports.getGrossSkinsPaidList = getGrossSkinsPaidList;
+/**
+ * Mark a player paid/unpaid for Gross Skins for a tee date via the API server.
+ */
+const setGrossSkinsPaid = async (eventId, teeDate, playerId, paid) => {
+    try {
+        const response = await fetch(`${API_URL}/events/${eventId}/gross-skins-tracker`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playerId, teeDate, paid }),
+        });
+        return response.ok;
+    }
+    catch (error) {
+        console.error('Error setting gross skins paid status:', error);
+        return false;
+    }
+};
+exports.setGrossSkinsPaid = setGrossSkinsPaid;
 /**
  * Add tee times for an event/date via the API server (mirrors addtimes.php)
  */
@@ -1057,6 +1111,36 @@ const syncGamePayouts = async (gameId) => {
     }
 };
 exports.syncGamePayouts = syncGamePayouts;
+/** Everyone's total winnings for a week across every payout type at once (Net, every Teams slot,
+ * Skins, Gross Skins, Hole-in-One) -- what to Venmo each player, in one place. */
+const getWeekPurse = async (gameId) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/purse`);
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching week purse:', error);
+        return [];
+    }
+};
+exports.getWeekPurse = getWeekPurse;
+/** Hole-in-one celebration info for a game, or null if this game had no hole-in-one -- Week
+ * Results checks this whenever a week is opened, to show the celebration screen. */
+const getHoleInOneCelebration = async (gameId) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/hole-in-one`, { cache: 'no-store' });
+        if (!response.ok)
+            return null;
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching hole-in-one celebration:', error);
+        return null;
+    }
+};
+exports.getHoleInOneCelebration = getHoleInOneCelebration;
 /** Season-long payout summary for an event: per player, total paid in vs. total won. */
 const getSeasonPayoutSummary = async (eventId) => {
     try {
@@ -1856,6 +1940,23 @@ const getTeamScorecard = async (gameId, teamId, side) => {
     }
 };
 exports.getTeamScorecard = getTeamScorecard;
+/**
+ * Get one player's hole-by-hole gross+net scorecard for a side (F/B/T) via the API server --
+ * powers the Leaderboard's tap-a-name drill-down.
+ */
+const getPlayerScorecard = async (gameId, playerId, side) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/players/${playerId}/scorecard?side=${side}`);
+        if (!response.ok)
+            return { holes: [], totalGross: 0, totalNet: 0 };
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching player scorecard:', error);
+        return { holes: [], totalGross: 0, totalNet: 0 };
+    }
+};
+exports.getPlayerScorecard = getPlayerScorecard;
 /** List every team game set up for a round via the API server. */
 const listTeamGames = async (gameId) => {
     try {
@@ -1870,13 +1971,17 @@ const listTeamGames = async (gameId) => {
     }
 };
 exports.listTeamGames = listTeamGames;
-/** Create a new team game for a round via the API server. Returns the new TeamGameID, or null on failure. */
-const createTeamGame = async (gameId, label, teamSize, keepCount, assignMode, lastHoleAll, slot) => {
+/** Create a new team game for a round via the API server. Returns the new TeamGameID, or null on
+ * failure. `format` defaults to 'custom' when omitted -- pass '36/48' or 'irish' to create a
+ * one-off predefined-format team game (teamSize/keepCount are ignored for those, assignMode must
+ * be 'G'), e.g. to run a different format for a single week without touching the event's
+ * standard Options setting. */
+const createTeamGame = async (gameId, label, teamSize, keepCount, assignMode, lastHoleAll, slot, format) => {
     try {
         const response = await fetch(`${API_URL}/games/${gameId}/team-games`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ label, teamSize, keepCount, assignMode, lastHoleAll, slot }),
+            body: JSON.stringify({ label, teamSize, keepCount, assignMode, lastHoleAll, slot, format }),
         });
         if (!response.ok)
             return null;
@@ -2039,6 +2144,127 @@ const getTeamGameScorecard = async (teamGameId, teamNumber, side) => {
     }
 };
 exports.getTeamGameScorecard = getTeamGameScorecard;
+/** Live standings for every team in a 36/48 team game -- empty for a 'custom'-format team game. */
+const getTeamGameLiveLeaderboard = async (teamGameId) => {
+    try {
+        const response = await fetch(`${API_URL}/team-games/${teamGameId}/live-leaderboard`, { cache: 'no-store' });
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching team game live leaderboard:', error);
+        return [];
+    }
+};
+exports.getTeamGameLiveLeaderboard = getTeamGameLiveLeaderboard;
+const getTeamBestPossible = async (teamGameId) => {
+    try {
+        const response = await fetch(`${API_URL}/team-games/${teamGameId}/best-possible`, { cache: 'no-store' });
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching team best-possible:', error);
+        return [];
+    }
+};
+exports.getTeamBestPossible = getTeamBestPossible;
+/** Weeks that had at least one 36/48 team game with a rostered, scored player -- for the Best
+ * Possible screen's week picker, pre-filtered so every listed week is actually usable. */
+const getBestPossibleWeeks = async (eventId) => {
+    try {
+        const response = await fetch(`${API_URL}/events/${eventId}/best-possible-weeks`, { cache: 'no-store' });
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching best-possible weeks:', error);
+        return [];
+    }
+};
+exports.getBestPossibleWeeks = getBestPossibleWeeks;
+/** Every 36/48-format team game this exact foursome (by player ID) is registered as one team in,
+ * for a given game -- empty for the vast majority of games, which don't use this format at all. */
+const getKeepTeamsForGame = async (gameId, playerIds) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/keep-teams?playerIds=${playerIds.join(',')}`, { cache: 'no-store' });
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching keep-format teams:', error);
+        return [];
+    }
+};
+exports.getKeepTeamsForGame = getKeepTeamsForGame;
+/** A 36/48 team's already-recorded live keep choices, keyed by hole number. */
+const getTeamGameHoleKeep = async (teamGameId, teamNumber) => {
+    try {
+        const response = await fetch(`${API_URL}/team-games/${teamGameId}/hole-keep?teamNumber=${teamNumber}`, { cache: 'no-store' });
+        if (!response.ok)
+            return {};
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching team game hole keep counts:', error);
+        return {};
+    }
+};
+exports.getTeamGameHoleKeep = getTeamGameHoleKeep;
+/** Every Irish Rumble team game this exact foursome (by player ID) is registered as one team in,
+ * for a given game -- empty for the vast majority of games, which don't use this format at all. */
+const getIrishRumbleTeamsForGame = async (gameId, playerIds) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/irish-teams?playerIds=${playerIds.join(',')}`, { cache: 'no-store' });
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching Irish Rumble teams:', error);
+        return [];
+    }
+};
+exports.getIrishRumbleTeamsForGame = getIrishRumbleTeamsForGame;
+const getFixedKeepLiveLeaderboard = async (teamGameId) => {
+    try {
+        const response = await fetch(`${API_URL}/team-games/${teamGameId}/irish-leaderboard`, { cache: 'no-store' });
+        if (!response.ok)
+            return [];
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching fixed-keep live leaderboard:', error);
+        return [];
+    }
+};
+exports.getFixedKeepLiveLeaderboard = getFixedKeepLiveLeaderboard;
+/** Save one hole's live keep-count choice for a 36/48 team. Returns an error message on failure
+ * (e.g. the choice was no longer valid by the time it reached the server) so the caller can show
+ * it, rather than a bare boolean -- this is a hard-validated write, not a best-effort one. */
+const saveTeamGameHoleKeep = async (teamGameId, teamNumber, holeId, keepCount, holesRemaining) => {
+    try {
+        const response = await fetch(`${API_URL}/team-games/${teamGameId}/hole-keep`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teamNumber, holeId, keepCount, holesRemaining }),
+        });
+        if (!response.ok) {
+            const body = (await response.json().catch(() => ({})));
+            return { ok: false, error: body.error || 'Failed to save keep count.' };
+        }
+        return { ok: true };
+    }
+    catch (error) {
+        console.error('Error saving team game hole keep count:', error);
+        return { ok: false, error: 'Failed to save keep count.' };
+    }
+};
+exports.saveTeamGameHoleKeep = saveTeamGameHoleKeep;
 /**
  * Get every player's hole-by-hole scores for a game/side/scoreType via the API server
  */
@@ -2136,6 +2362,68 @@ const recalculateSkins = async (gameId) => {
     }
 };
 exports.recalculateSkins = recalculateSkins;
+/** Whether Gross Skins should show at all for this week (>=1 player marked paid for it). */
+const getGrossSkinsVisible = async (gameId) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/gross-skins-visible`);
+        if (!response.ok)
+            return false;
+        const data = (await response.json());
+        return data.visible;
+    }
+    catch (error) {
+        console.error('Error checking gross skins visibility:', error);
+        return false;
+    }
+};
+exports.getGrossSkinsVisible = getGrossSkinsVisible;
+/**
+ * Get the gross skins winner (and validation) for a single hole via the API server
+ */
+const getGrossSkinsForHole = async (gameId, holeId) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/gross-skins?hole=${holeId}`);
+        if (!response.ok)
+            return { rows: [], validation: null };
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching gross skins for hole:', error);
+        return { rows: [], validation: null };
+    }
+};
+exports.getGrossSkinsForHole = getGrossSkinsForHole;
+/**
+ * Get the gross skins totals summary for a game via the API server
+ */
+const getGrossSkinsTotals = async (gameId) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/gross-skins?hole=T`);
+        if (!response.ok)
+            return { perSkin: 0, rows: [] };
+        return (await response.json());
+    }
+    catch (error) {
+        console.error('Error fetching gross skins totals:', error);
+        return { perSkin: 0, rows: [] };
+    }
+};
+exports.getGrossSkinsTotals = getGrossSkinsTotals;
+/**
+ * Recompute every scored hole's gross skins in one pass via the API server — used once when the
+ * Gross Skins Summary view opens.
+ */
+const recalculateGrossSkins = async (gameId) => {
+    try {
+        const response = await fetch(`${API_URL}/games/${gameId}/gross-skins/recalculate`, { method: 'POST' });
+        return response.ok;
+    }
+    catch (error) {
+        console.error('Error recalculating gross skins:', error);
+        return false;
+    }
+};
+exports.recalculateGrossSkins = recalculateGrossSkins;
 /**
  * Get players with scores for a game via the API server
  */

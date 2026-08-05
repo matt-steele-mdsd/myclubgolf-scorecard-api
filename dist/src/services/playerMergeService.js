@@ -25,9 +25,11 @@ const skinsService_1 = require("./skinsService");
  * via Link Players into their other event(s) — see [[data_model_gotchas]] and the
  * Rod/Rodd Zeller and Tom/Thomas Barker merges this generalizes.
  */
-/** Every table that stores rows keyed (in part) by PlayerID, and needs reassigning on a merge. */
+/** Every table that stores rows keyed (in part) by PlayerID, and needs reassigning on a merge.
+ * Deliberately excludes 'Team' -- dropped from production 2026-07-13 (see ARCHITECTURE.md),
+ * superseded by TeamGame/TeamGamePlayer; querying it here 500'd Merge Players/Orphaned Players. */
 const SIMPLE_PLAYER_TABLES = [
-    'Score', 'Team', 'Skins', 'Hdcp', 'PostedGHIN', 'PlayerStatus', 'GSkins', 'OptOut',
+    'Score', 'Skins', 'Hdcp', 'PostedGHIN', 'PlayerStatus', 'GSkins', 'GrossSkinsResult', 'GSkinsPaid', 'OptOut',
     'InGrossBirdie', 'InNetBirdie', 'InUPSCup', 'UpsCupPaid', 'UpsCupWinner', 'PaidTracker',
     'PlayingGroup', 'TeamGamePlayer',
 ];
@@ -319,8 +321,9 @@ async function searchPlayersInEvent(eventId, query) {
 /** Tables where a single game's data can be misattributed to the wrong player — the Tom/Thomas
  * Barker and Denny/Dennis English GameID-level fixes this generalizes. Narrower than
  * SIMPLE_PLAYER_TABLES: EventPlayers/PostedGHIN/PlayerStatus aren't scoped to one GameID the same
- * way, so they're left alone here — a swap only touches what actually happened *in that game*. */
-const GAME_SWAP_TABLES = ['Score', 'Team', 'Skins', 'Hdcp'];
+ * way, so they're left alone here — a swap only touches what actually happened *in that game*.
+ * 'Team' excluded, same reason as SIMPLE_PLAYER_TABLES above (dropped from production 2026-07-13). */
+const GAME_SWAP_TABLES = ['Score', 'Skins', 'Hdcp'];
 /** What a swap would actually move for one player, in terms an admin can sanity-check at a
  * glance — the real gross score total for this game (not a row count, which is just the number
  * of holes played and not useful for spotting a wrong-player mixup) and their on-file handicap

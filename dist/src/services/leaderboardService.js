@@ -28,7 +28,8 @@ async function getLeaderboard(gameId, scoreType) {
     const orderClause = scoreType === 'G'
         ? '(SUM(sc.Score) - SUM(cd.Par)) ASC'
         : '(SUM(sc.NetScore) - SUM(cd.Par)) ASC';
-    const [rows] = await config_1.default.query(`SELECT CONCAT(p.LastName, ', ', p.FirstName) AS Name,
+    const [rows] = await config_1.default.query(`SELECT sc.PlayerID AS PlayerID,
+            CONCAT(p.LastName, ', ', p.FirstName) AS Name,
             MAX(sc.HoleID) AS Thru,
             CASE
               WHEN (SUM(${scoreType === 'G' ? 'sc.Score' : 'sc.NetScore'}) - SUM(cd.Par)) = 0 THEN 'Even'
@@ -41,7 +42,7 @@ async function getLeaderboard(gameId, scoreType) {
      WHERE sc.GameID = ? AND sc.Score > 0
      GROUP BY sc.PlayerID
      ORDER BY ${orderClause}, p.LastName, p.FirstName`, [gameId]);
-    return rows.map((r) => ({ name: r.Name, thru: r.Thru, score: r.Standing }));
+    return rows.map((r) => ({ playerId: r.PlayerID, name: r.Name, thru: r.Thru, score: r.Standing }));
 }
 /**
  * Which side (Front 9 / Back 9) the scorecard grid should default to opening on, based on

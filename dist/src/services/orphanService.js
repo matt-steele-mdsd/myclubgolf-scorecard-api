@@ -12,11 +12,13 @@ const config_1 = __importDefault(require("../db/config"));
  * list was derived) that isn't enforced by a real database FK constraint. A bug, a manual SQL
  * fix, or data left over from before a cascading-delete feature existed can leave dangling rows
  * behind with no way to notice except checking for them directly.
+ *
+ * Deliberately excludes 'Team' -- dropped from production 2026-07-13 (see ARCHITECTURE.md),
+ * superseded by TeamGame/TeamGamePlayer; querying a dropped table here 500'd this whole scan.
  */
 const ORPHAN_CHECKS = [
     // GameID -> Game
     { table: 'Score', column: 'GameID', parentTable: 'Game', parentColumn: 'GameID' },
-    { table: 'Team', column: 'GameID', parentTable: 'Game', parentColumn: 'GameID' },
     { table: 'OptOut', column: 'GameID', parentTable: 'Game', parentColumn: 'GameID' },
     { table: 'Hdcp', column: 'GameID', parentTable: 'Game', parentColumn: 'GameID' },
     { table: 'Skins', column: 'GameID', parentTable: 'Game', parentColumn: 'GameID' },
@@ -24,6 +26,7 @@ const ORPHAN_CHECKS = [
     { table: 'TeamGame', column: 'GameID', parentTable: 'Game', parentColumn: 'GameID' },
     { table: 'PostedGHIN', column: 'GameID', parentTable: 'Game', parentColumn: 'GameID' },
     { table: 'GSkins', column: 'GameID', parentTable: 'Game', parentColumn: 'GameID' },
+    { table: 'GrossSkinsResult', column: 'GameID', parentTable: 'Game', parentColumn: 'GameID' },
     // TeamGameID -> TeamGame
     { table: 'TeamGamePlayer', column: 'TeamGameID', parentTable: 'TeamGame', parentColumn: 'TeamGameID' },
     // GroupID/EventID -> Events
@@ -33,6 +36,7 @@ const ORPHAN_CHECKS = [
     { table: 'EventCalendar', column: 'EventID', parentTable: 'Events', parentColumn: 'EventID' },
     { table: 'TeeTimes', column: 'GroupID', parentTable: 'Events', parentColumn: 'EventID' },
     { table: 'PaidTracker', column: 'GroupID', parentTable: 'Events', parentColumn: 'EventID' },
+    { table: 'GSkinsPaid', column: 'GroupID', parentTable: 'Events', parentColumn: 'EventID' },
     { table: 'PlayerStatus', column: 'GroupID', parentTable: 'Events', parentColumn: 'EventID' },
     { table: 'CleanupIgnored', column: 'EventID', parentTable: 'Events', parentColumn: 'EventID' },
     { table: 'UpsCupWinner', column: 'EventID', parentTable: 'Events', parentColumn: 'EventID' },
@@ -42,7 +46,6 @@ const ORPHAN_CHECKS = [
     { table: 'InUPSCup', column: 'EventID', parentTable: 'Events', parentColumn: 'EventID' },
     // PlayerID -> Player
     { table: 'Score', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
-    { table: 'Team', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
     { table: 'OptOut', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
     { table: 'Hdcp', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
     { table: 'Skins', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
@@ -52,7 +55,9 @@ const ORPHAN_CHECKS = [
     { table: 'EventPlayers', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
     { table: 'PlayerStatus', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
     { table: 'PaidTracker', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
+    { table: 'GSkinsPaid', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
     { table: 'GSkins', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
+    { table: 'GrossSkinsResult', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
     { table: 'UpsCupWinner', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
     { table: 'UpsCupPaid', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },
     { table: 'InGrossBirdie', column: 'PlayerID', parentTable: 'Player', parentColumn: 'PlayerID' },

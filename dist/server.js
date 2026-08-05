@@ -32,6 +32,8 @@ const playerService_1 = require("./src/services/playerService");
 const playerMergeService_1 = require("./src/services/playerMergeService");
 const teetimesService_1 = require("./src/services/teetimesService");
 const paidTrackerService_1 = require("./src/services/paidTrackerService");
+const grossSkinsPaidService_1 = require("./src/services/grossSkinsPaidService");
+const grossSkinsService_1 = require("./src/services/grossSkinsService");
 const ghinService_1 = require("./src/services/ghinService");
 const optionsService_1 = require("./src/services/optionsService");
 const payoutLedgerService_1 = require("./src/services/payoutLedgerService");
@@ -718,6 +720,50 @@ app.post('/api/events/:id/paid-tracker', async (req, res) => {
         res.status(500).json({ error: 'Failed to set paid tracker status' });
     }
 });
+// Get everyone registered for a tee date, with Gross Skins paid status (Admin -> Gross Skins Tracker)
+app.get('/api/events/:id/gross-skins-tracker', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id);
+        const teeDate = req.query.teeDate;
+        if (!teeDate) {
+            return res.status(400).json({ error: 'teeDate query param required' });
+        }
+        const rows = await (0, grossSkinsPaidService_1.getGrossSkinsPaidList)(eventId, teeDate);
+        res.json(rows);
+    }
+    catch (error) {
+        console.error('Error fetching gross skins paid list:', error.message);
+        res.status(500).json({ error: 'Failed to fetch gross skins paid list' });
+    }
+});
+// Date list for Gross Skins Tracker (last month + future, unlike Paid Tracker's future-only /teetimes)
+app.get('/api/events/:id/gross-skins-tracker-dates', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id);
+        const result = await (0, grossSkinsPaidService_1.getGrossSkinsTrackerDates)(eventId);
+        res.json(result);
+    }
+    catch (error) {
+        console.error('Error fetching gross skins tracker dates:', error.message);
+        res.status(500).json({ error: 'Failed to fetch gross skins tracker dates' });
+    }
+});
+// Mark a player paid/unpaid for Gross Skins for a tee date (Admin -> Gross Skins Tracker)
+app.post('/api/events/:id/gross-skins-tracker', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id);
+        const { playerId, teeDate, paid } = req.body;
+        if (!playerId || !teeDate || typeof paid !== 'boolean') {
+            return res.status(400).json({ error: 'playerId, teeDate, and paid are required' });
+        }
+        await (0, grossSkinsPaidService_1.setGrossSkinsPaid)(eventId, teeDate, playerId, paid);
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Error setting gross skins paid status:', error.message);
+        res.status(500).json({ error: 'Failed to set gross skins paid status' });
+    }
+});
 // Add tee times for an event/date endpoint (mirrors addtimes.php)
 app.post('/api/events/:id/teetimes', async (req, res) => {
     try {
@@ -948,6 +994,18 @@ app.post('/api/games/:id/sync-payouts', async (req, res) => {
     catch (error) {
         console.error('Error syncing game payout ledger:', error.message);
         res.status(500).json({ error: 'Failed to sync game payout ledger' });
+    }
+});
+// Everyone's total winnings for a week across every payout type at once (Purse tab)
+app.get('/api/games/:id/purse', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const rows = await (0, payoutLedgerService_1.getWeekPurse)(gameId);
+        res.json(rows);
+    }
+    catch (error) {
+        console.error('Error fetching week purse:', error.message);
+        res.status(500).json({ error: 'Failed to fetch week purse' });
     }
 });
 // Hole-in-one celebration info for a game -- null when there wasn't one. Week Results checks
@@ -1476,6 +1534,26 @@ app.get('/api/scores/:gameId/:playerId', async (req, res) => {
     catch (error) {
         console.error('Error getting scores:', error.message);
         res.status(500).json({ error: 'Failed to get scores' });
+    }
+});
+// One player's hole-by-hole gross+net scorecard for a side (Leaderboard tap-a-name drill-down)
+app.get('/api/games/:gameId/players/:playerId/scorecard', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.gameId);
+        const playerId = parseInt(req.params.playerId);
+        const side = req.query.side || 'T';
+        if (!gameId || !playerId) {
+            return res.status(400).json({ error: 'Game ID and player ID are required' });
+        }
+        if (side !== 'F' && side !== 'B' && side !== 'T') {
+            return res.status(400).json({ error: 'side must be F, B, or T' });
+        }
+        const scorecard = await (0, scoreService_1.getPlayerScorecard)(gameId, playerId, side);
+        res.json(scorecard);
+    }
+    catch (error) {
+        console.error('Error getting player scorecard:', error.message);
+        res.status(500).json({ error: 'Failed to get player scorecard' });
     }
 });
 // Get latest game for an event endpoint
@@ -2171,6 +2249,52 @@ app.post('/api/games/:id/skins/recalculate', async (req, res) => {
     catch (error) {
         console.error('Error recalculating skins:', error.message);
         res.status(500).json({ error: 'Failed to recalculate skins' });
+    }
+});
+// Whether Gross Skins should even show for this week (>=1 player marked paid for it)
+app.get('/api/games/:id/gross-skins-visible', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const visible = await (0, grossSkinsPaidService_1.hasAnyGrossSkinsPaidForGame)(gameId);
+        res.json({ visible });
+    }
+    catch (error) {
+        console.error('Error checking gross skins visibility:', error.message);
+        res.status(500).json({ error: 'Failed to check gross skins visibility' });
+    }
+});
+// Get gross skins winner (and validate) for a hole, or the gross skins totals summary, endpoint
+app.get('/api/games/:id/gross-skins', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const hole = req.query.hole;
+        if (!hole) {
+            return res.status(400).json({ error: 'hole query param is required (1-18 or "T")' });
+        }
+        if (hole === 'T') {
+            const totals = await (0, grossSkinsService_1.getGrossSkinsTotals)(gameId);
+            return res.json(totals);
+        }
+        const holeId = parseInt(hole);
+        const result = await (0, grossSkinsService_1.getGrossSkinsForHole)(gameId, holeId);
+        res.json(result);
+    }
+    catch (error) {
+        console.error('Error fetching gross skins:', error.message);
+        res.status(500).json({ error: 'Failed to fetch gross skins' });
+    }
+});
+// Recompute every scored hole's gross skins in one pass endpoint (used by the Summary view)
+app.post('/api/games/:id/gross-skins/recalculate', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const holes = await (0, skinsService_1.getScoredHoles)(gameId);
+        await (0, grossSkinsService_1.recalculateAllGrossSkins)(gameId, holes);
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Error recalculating gross skins:', error.message);
+        res.status(500).json({ error: 'Failed to recalculate gross skins' });
     }
 });
 // Get active (not opted-out) players for a game endpoint

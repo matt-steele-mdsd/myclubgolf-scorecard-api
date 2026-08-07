@@ -9,6 +9,8 @@ exports.updateGameCourse = updateGameCourse;
 exports.updatePotOptOut = updatePotOptOut;
 exports.calcNetAndSkins = calcNetAndSkins;
 exports.getPlayerScores = getPlayerScores;
+exports.getGenderedHoleHdcps = getGenderedHoleHdcps;
+exports.getPlayerGenders = getPlayerGenders;
 exports.getCourseDetails = getCourseDetails;
 exports.initializeGame = initializeGame;
 const config_1 = __importDefault(require("../db/config"));
@@ -119,9 +121,42 @@ async function getPlayerScores(gameId, courseId, playerId, playerHdcp) {
         };
     });
 }
+/** Men's and Women's stroke-index ranking per hole for a course, straight from the cached GHIN
+ * tee data -- shared by getCourseDetails (game.tsx's live path), skinsService.ts, and
+ * playerMergeService.ts (Swap Players' handicap recompute), so all three read gendered stroke
+ * index the same way. Empty maps for a gender whose tee data was never cached. */
+async function getGenderedHoleHdcps(courseId) {
+    const [teeRows] = await config_1.default.query(`SELECT ts.Gender, h.HoleNum, h.Hdcp
+     FROM CourseTeeHole h
+     INNER JOIN CourseTeeSet ts ON ts.CourseTeeSetID = h.CourseTeeSetID
+     WHERE ts.CourseID = ?`, [courseId]);
+    const male = new Map();
+    const female = new Map();
+    for (const r of teeRows) {
+        (r.Gender === 'Female' ? female : male).set(r.HoleNum, r.Hdcp);
+    }
+    return { male, female };
+}
+/** Every given player's Gender, in one batched query -- see hdcpForPlayer in utils/handicap.ts. */
+async function getPlayerGenders(playerIds) {
+    const result = new Map();
+    if (playerIds.length === 0)
+        return result;
+    const [rows] = await config_1.default.query('SELECT PlayerID, Gender FROM Player WHERE PlayerID IN (?)', [playerIds]);
+    for (const r of rows)
+        result.set(r.PlayerID, r.Gender === 'F' ? 'F' : 'M');
+    return result;
+}
 async function getCourseDetails(courseId) {
     const [rows] = await config_1.default.query(`SELECT HoleNum, Par, Hdcp FROM CourseDetails WHERE CourseID = ? ORDER BY HoleNum`, [courseId]);
-    return rows.map((r) => ({ holeNum: r.HoleNum, par: r.Par, hdcp: r.Hdcp }));
+    const { male, female } = await getGenderedHoleHdcps(courseId);
+    return rows.map((r) => ({
+        holeNum: r.HoleNum,
+        par: r.Par,
+        hdcp: r.Hdcp,
+        hdcpMale: male.get(r.HoleNum) ?? null,
+        hdcpFemale: female.get(r.HoleNum) ?? null,
+    }));
 }
 async function initializeGame(params) {
     const gameId = await getOrCreateGame(params.eventId, params.courseId);

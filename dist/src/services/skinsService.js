@@ -13,6 +13,7 @@ exports.getSkinsTotals = getSkinsTotals;
 const config_1 = __importDefault(require("../db/config"));
 const optionsService_1 = require("./optionsService");
 const handicap_1 = require("../utils/handicap");
+const gameService_1 = require("./gameService");
 const money_1 = require("../utils/money");
 /** Mirrors app/game.tsx's reading of the skins_* Options into the 3 modes computeHoleScoring
  * switches on — a single source of truth so a hole's skins score can be recomputed live from
@@ -173,11 +174,18 @@ async function getSkinsForHole(gameId, holeId, context) {
      INNER JOIN Player p ON p.PlayerID = s.PlayerID
      WHERE s.GameID = ? AND s.HoleID = ?
        AND s.PlayerID NOT IN (SELECT o.PlayerID FROM OptOut o WHERE o.GameID = ?)`, [gameId, holeId, gameId]);
-    const playerHdcps = await resolvePlayerHdcps(gameId, gameDate, scoreRows.map((r) => r.PlayerID));
+    const playerIds = scoreRows.map((r) => r.PlayerID);
+    const [playerHdcps, playerGenders, genderedHdcps] = await Promise.all([
+        resolvePlayerHdcps(gameId, gameDate, playerIds),
+        (0, gameService_1.getPlayerGenders)(playerIds),
+        (0, gameService_1.getGenderedHoleHdcps)(courseId),
+    ]);
     const computed = [];
     for (const r of scoreRows) {
         const playerHdcp = playerHdcps.get(r.PlayerID) ?? 0;
-        const skinsScore = computeSkinsScoreValue(r.Score, par, holeHdcp, playerHdcp, modes);
+        const gender = playerGenders.get(r.PlayerID) ?? 'M';
+        const playerHoleHdcp = (0, handicap_1.hdcpForPlayer)({ hdcp: holeHdcp, hdcpMale: genderedHdcps.male.get(holeId) ?? null, hdcpFemale: genderedHdcps.female.get(holeId) ?? null }, gender);
+        const skinsScore = computeSkinsScoreValue(r.Score, par, playerHoleHdcp, playerHdcp, modes);
         computed.push({ PlayerID: r.PlayerID, name: r.name, Score: r.Score, NetScore: r.NetScore, skinsScore });
     }
     // One batched UPDATE for the whole hole instead of one round trip per player — same fix as

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.formatHdcp = formatHdcp;
 exports.parseHdcp = parseHdcp;
 exports.getStrokes = getStrokes;
+exports.hdcpForPlayer = hdcpForPlayer;
 /**
  * Formats a handicap for display using golf convention: plus handicappers (better than
  * scratch, stored as a negative number) show with a "+" prefix instead of a raw minus sign
@@ -46,4 +47,15 @@ function getStrokes(playerHdcp, holeHdcp) {
     if ((playerHdcp - 36) >= holeHdcp)
         strokes++;
     return strokes;
+}
+/**
+ * Resolves which stroke-index value actually applies to a given player at a hole -- the one
+ * function every net-score/skins calculation should go through instead of reading `.hdcp`
+ * directly, now that the ranking can differ by gender. Falls back to the gender-agnostic
+ * `hdcp` when that gender has no cached tee data for this course (confirmed with real data
+ * 2026-08-06: Men's and Women's stroke-index order can genuinely differ hole-to-hole, e.g. one
+ * hole was the 11th-hardest for men but 13th-hardest for women at a real course).
+ */
+function hdcpForPlayer(hole, gender) {
+    return (gender === 'M' ? hole.hdcpMale : hole.hdcpFemale) ?? hole.hdcp;
 }

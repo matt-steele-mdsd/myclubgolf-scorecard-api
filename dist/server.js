@@ -327,8 +327,7 @@ app.get('/api/courses/:id/history', async (req, res) => {
 app.get('/api/courses/:id/details', async (req, res) => {
     try {
         const courseId = parseInt(req.params.id);
-        const [rows] = await config_1.default.query('SELECT HoleNum AS holeNum, Par AS par, Hdcp AS hdcp FROM CourseDetails WHERE CourseID = ? ORDER BY HoleNum', [courseId]);
-        res.json(rows);
+        res.json(await (0, gameService_2.getCourseDetails)(courseId));
     }
     catch (error) {
         console.error('Error fetching course details:', error.message);
@@ -339,7 +338,7 @@ app.get('/api/courses/:id/details', async (req, res) => {
 app.get('/api/events/:id/players', async (req, res) => {
     try {
         const eventId = parseInt(req.params.id);
-        const [rows] = await config_1.default.query(`SELECT p.PlayerID AS id, p.LastName, p.FirstName 
+        const [rows] = await config_1.default.query(`SELECT p.PlayerID AS id, p.LastName, p.FirstName, p.Gender
        FROM Player p
        WHERE p.PlayerID IN (
          SELECT ep.PlayerID FROM EventPlayers ep WHERE ep.EventID = ?

@@ -19,6 +19,7 @@ exports.swapPlayersInGame = swapPlayersInGame;
 const config_1 = __importDefault(require("../db/config"));
 const gameService_1 = require("./gameService");
 const skinsService_1 = require("./skinsService");
+const handicap_1 = require("../utils/handicap");
 /**
  * Master Tools -> Merge Players. For when the same real person got added as two separate
  * Player rows (usually a name-spelling mismatch, e.g. "Tom"/"Thomas") instead of being linked
@@ -394,18 +395,27 @@ async function swapPlayersInGame(gameId, playerAId, playerBId, playerBHandicap) 
     if (playerBHandicap !== undefined && !Number.isNaN(playerBHandicap)) {
         await config_1.default.query(`INSERT INTO Hdcp (GameID, PlayerID, Hdcp, LastUpdateUser) VALUES (?, ?, ?, 'App')
        ON DUPLICATE KEY UPDATE Hdcp = VALUES(Hdcp)`, [gameId, playerBId, playerBHandicap]);
-        const [holeRows] = await config_1.default.query(`SELECT s.HoleID, s.Score, cd.Par, cd.Hdcp
+        const [holeRows] = await config_1.default.query(`SELECT s.HoleID, s.Score, s.CourseID, cd.Par, cd.Hdcp
        FROM Score s
        INNER JOIN CourseDetails cd ON cd.CourseID = s.CourseID AND cd.HoleNum = s.HoleID
        WHERE s.GameID = ? AND s.PlayerID = ?`, [gameId, playerBId]);
-        for (const row of holeRows) {
-            const { net } = (0, gameService_1.calcNetAndSkins)(row.Score, playerBHandicap, row.Par, row.Hdcp);
-            await config_1.default.query('UPDATE Score SET NetScore = ? WHERE GameID = ? AND PlayerID = ? AND HoleID = ?', [
-                net,
-                gameId,
-                playerBId,
-                row.HoleID,
+        if (holeRows.length > 0) {
+            const courseId = holeRows[0].CourseID;
+            const [genders, genderedHdcps] = await Promise.all([
+                (0, gameService_1.getPlayerGenders)([playerBId]),
+                (0, gameService_1.getGenderedHoleHdcps)(courseId),
             ]);
+            const gender = genders.get(playerBId) ?? 'M';
+            for (const row of holeRows) {
+                const playerHoleHdcp = (0, handicap_1.hdcpForPlayer)({ hdcp: row.Hdcp, hdcpMale: genderedHdcps.male.get(row.HoleID) ?? null, hdcpFemale: genderedHdcps.female.get(row.HoleID) ?? null }, gender);
+                const { net } = (0, gameService_1.calcNetAndSkins)(row.Score, playerBHandicap, row.Par, playerHoleHdcp);
+                await config_1.default.query('UPDATE Score SET NetScore = ? WHERE GameID = ? AND PlayerID = ? AND HoleID = ?', [
+                    net,
+                    gameId,
+                    playerBId,
+                    row.HoleID,
+                ]);
+            }
         }
         await (0, skinsService_1.recalculateAllSkins)(gameId);
     }

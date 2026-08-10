@@ -19,6 +19,7 @@ exports.swapPlayersInGame = swapPlayersInGame;
 const config_1 = __importDefault(require("../db/config"));
 const gameService_1 = require("./gameService");
 const skinsService_1 = require("./skinsService");
+const optionsService_1 = require("./optionsService");
 const handicap_1 = require("../utils/handicap");
 /**
  * Master Tools -> Merge Players. For when the same real person got added as two separate
@@ -401,13 +402,16 @@ async function swapPlayersInGame(gameId, playerAId, playerBId, playerBHandicap) 
        WHERE s.GameID = ? AND s.PlayerID = ?`, [gameId, playerBId]);
         if (holeRows.length > 0) {
             const courseId = holeRows[0].CourseID;
+            const [gameRows] = await config_1.default.query('SELECT GroupID FROM Game WHERE GameID = ?', [gameId]);
+            const options = gameRows.length > 0 ? await (0, optionsService_1.getEventOptions)(gameRows[0].GroupID) : null;
+            const womenHdcpHoles = options ? options.women_hdcp_holes : true;
             const [genders, genderedHdcps] = await Promise.all([
                 (0, gameService_1.getPlayerGenders)([playerBId]),
                 (0, gameService_1.getGenderedHoleHdcps)(courseId),
             ]);
             const gender = genders.get(playerBId) ?? 'M';
             for (const row of holeRows) {
-                const playerHoleHdcp = (0, handicap_1.hdcpForPlayer)({ hdcp: row.Hdcp, hdcpMale: genderedHdcps.male.get(row.HoleID) ?? null, hdcpFemale: genderedHdcps.female.get(row.HoleID) ?? null }, gender);
+                const playerHoleHdcp = (0, handicap_1.hdcpForPlayer)({ hdcp: row.Hdcp, hdcpMale: genderedHdcps.male.get(row.HoleID) ?? null, hdcpFemale: genderedHdcps.female.get(row.HoleID) ?? null }, gender, womenHdcpHoles);
                 const { net } = (0, gameService_1.calcNetAndSkins)(row.Score, playerBHandicap, row.Par, playerHoleHdcp);
                 await config_1.default.query('UPDATE Score SET NetScore = ? WHERE GameID = ? AND PlayerID = ? AND HoleID = ?', [
                     net,

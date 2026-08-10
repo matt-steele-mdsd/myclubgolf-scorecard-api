@@ -184,7 +184,7 @@ async function getSkinsForHole(gameId, holeId, context) {
     for (const r of scoreRows) {
         const playerHdcp = playerHdcps.get(r.PlayerID) ?? 0;
         const gender = playerGenders.get(r.PlayerID) ?? 'M';
-        const playerHoleHdcp = (0, handicap_1.hdcpForPlayer)({ hdcp: holeHdcp, hdcpMale: genderedHdcps.male.get(holeId) ?? null, hdcpFemale: genderedHdcps.female.get(holeId) ?? null }, gender);
+        const playerHoleHdcp = (0, handicap_1.hdcpForPlayer)({ hdcp: holeHdcp, hdcpMale: genderedHdcps.male.get(holeId) ?? null, hdcpFemale: genderedHdcps.female.get(holeId) ?? null }, gender, options.women_hdcp_holes);
         const skinsScore = computeSkinsScoreValue(r.Score, par, playerHoleHdcp, playerHdcp, modes);
         computed.push({ PlayerID: r.PlayerID, name: r.name, Score: r.Score, NetScore: r.NetScore, skinsScore });
     }

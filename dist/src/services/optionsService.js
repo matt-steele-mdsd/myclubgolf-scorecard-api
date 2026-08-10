@@ -12,6 +12,7 @@ const DEFAULTS = {
     game_netdblbogey: false,
     game_maxhdcp: '',
     game_defaultholes: '18h',
+    women_hdcp_holes: true,
     game_netpayin: '',
     game_netplaces: '3',
     game_netpct1: '',
@@ -96,7 +97,7 @@ const DEFAULTS = {
     hidden_from_search: false,
 };
 const BOOLEAN_KEYS = [
-    'game_grossdblbogey', 'game_netdblbogey',
+    'game_grossdblbogey', 'game_netdblbogey', 'women_hdcp_holes',
     'teams_lastholeall', 'teams2_lastholeall', 'teams3_lastholeall', 'teams4_lastholeall',
     'teams_blinddraw', 'teams2_blinddraw', 'teams3_blinddraw', 'teams4_blinddraw',
     'teams_partnerteams', 'teams2_partnerteams', 'teams3_partnerteams', 'teams4_partnerteams',

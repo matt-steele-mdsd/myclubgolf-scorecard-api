@@ -55,7 +55,13 @@ function getStrokes(playerHdcp, holeHdcp) {
  * `hdcp` when that gender has no cached tee data for this course (confirmed with real data
  * 2026-08-06: Men's and Women's stroke-index order can genuinely differ hole-to-hole, e.g. one
  * hole was the 11th-hardest for men but 13th-hardest for women at a real course).
+ *
+ * `womenHandicapHoles` (default true) is the event-wide toggle: when false, everyone -- women
+ * included -- strokes on the MEN's handicap holes, so this just forces the men's ranking rather
+ * than each player's own gender. Only changes WHICH holes strokes land on, never how many. Mirrors
+ * RyderCup's RyderOptions.womenHandicapHoles.
  */
-function hdcpForPlayer(hole, gender) {
-    return (gender === 'M' ? hole.hdcpMale : hole.hdcpFemale) ?? hole.hdcp;
+function hdcpForPlayer(hole, gender, womenHandicapHoles = true) {
+    const effectiveGender = womenHandicapHoles ? gender : 'M';
+    return (effectiveGender === 'M' ? hole.hdcpMale : hole.hdcpFemale) ?? hole.hdcp;
 }

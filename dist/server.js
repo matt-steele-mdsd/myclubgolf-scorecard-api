@@ -981,6 +981,36 @@ app.delete('/api/games/:id/payout-options', async (req, res) => {
         res.status(500).json({ error: 'Failed to reset game payout options' });
     }
 });
+// This week's Double Bogey Max override, if any -- null means "no override, follow the event
+// default". Set up front (Team Games screen), not after the round like the payout overrides
+// above, so the cap actually applies to live scoring (see game.tsx's loadOptions).
+app.get('/api/games/:id/dblbogey-override', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const mode = await (0, optionsService_1.getGameDblBogeyOverride)(gameId);
+        res.json({ mode });
+    }
+    catch (error) {
+        console.error('Error fetching game double bogey override:', error.message);
+        res.status(500).json({ error: 'Failed to fetch game double bogey override' });
+    }
+});
+// Set (mode: 'off'|'gross'|'net') or clear (mode: null) this week's override.
+app.post('/api/games/:id/dblbogey-override', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const mode = req.body?.mode;
+        if (mode !== null && mode !== 'off' && mode !== 'gross' && mode !== 'net') {
+            return res.status(400).json({ error: 'mode must be "off", "gross", "net", or null' });
+        }
+        await (0, optionsService_1.saveGameDblBogeyOverride)(gameId, mode);
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Error saving game double bogey override:', error.message);
+        res.status(500).json({ error: 'Failed to save game double bogey override' });
+    }
+});
 // Recompute and persist this game's Net/Teams/Skins payout ledger rows -- called by Week Results
 // whenever it displays a week's payouts (browsing to it, or after an Adjust Payout save), so the
 // season summary always has an up-to-date record without a separate "finalize" step.
@@ -1081,6 +1111,36 @@ app.post('/api/events/:id/admin-password', async (req, res) => {
     catch (error) {
         console.error('Error setting admin password:', error.message);
         res.status(500).json({ error: 'Failed to set admin password' });
+    }
+});
+// Get the admin's saved Venmo username for this event (Tee Times' "pay now" prompt uses this as
+// the payment recipient) -- '' if none is set yet.
+app.get('/api/events/:id/venmo-username', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id);
+        const username = await (0, optionsService_1.getVenmoUsername)(eventId);
+        res.json({ username });
+    }
+    catch (error) {
+        console.error('Error fetching Venmo username:', error.message);
+        res.status(500).json({ error: 'Failed to fetch Venmo username' });
+    }
+});
+// Set (or clear, if blank) the admin's Venmo username for this event. 400s if the value doesn't
+// match Venmo's real username format (see VENMO_USERNAME_PATTERN) -- there's no API to confirm
+// the account actually exists, so format is the only check available.
+app.post('/api/events/:id/venmo-username', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id);
+        const { username } = req.body;
+        const ok = await (0, optionsService_1.setVenmoUsername)(eventId, username ?? '');
+        if (!ok)
+            return res.status(400).json({ error: 'Not a valid Venmo username format' });
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Error setting Venmo username:', error.message);
+        res.status(500).json({ error: 'Failed to set Venmo username' });
     }
 });
 // Get an event's recorded UPS Cup winners endpoint

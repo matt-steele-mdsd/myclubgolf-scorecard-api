@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetGamePayoutOverrides = exports.saveGamePayoutOverrides = exports.getEffectiveGamePayoutOptions = exports.getGamePayoutOverrides = exports.PAYOUT_OVERRIDE_KEYS = exports.hasAdminPassword = exports.verifyAdminPassword = exports.setAdminPassword = exports.saveEventOptions = exports.getEventOptions = void 0;
+exports.saveGameDblBogeyOverride = exports.getGameDblBogeyOverride = exports.resetGamePayoutOverrides = exports.saveGamePayoutOverrides = exports.getEffectiveGamePayoutOptions = exports.getGamePayoutOverrides = exports.PAYOUT_OVERRIDE_KEYS = exports.getVenmoUsername = exports.setVenmoUsername = exports.VENMO_USERNAME_PATTERN = exports.hasAdminPassword = exports.verifyAdminPassword = exports.setAdminPassword = exports.saveEventOptions = exports.getEventOptions = void 0;
 const config_1 = __importDefault(require("../db/config"));
 // Default options for any event with no EventOptions rows yet — including brand-new events,
 // since createEvent doesn't write any options rows itself.
@@ -95,6 +95,7 @@ const DEFAULTS = {
     ups_majorsauto: false,
     checkpaid: false,
     hidden_from_search: false,
+    venmo_autopay_enabled: false,
 };
 const BOOLEAN_KEYS = [
     'game_grossdblbogey', 'game_netdblbogey', 'women_hdcp_holes',
@@ -105,7 +106,7 @@ const BOOLEAN_KEYS = [
     'skins_halfpar3', 'skins_nonepar3', 'skins_halfall', 'skins_maxone',
     'gross_skins_enabled',
     'ups_enabled', 'ups_includeprioryears', 'ups_majorsauto', 'checkpaid',
-    'hidden_from_search',
+    'hidden_from_search', 'venmo_autopay_enabled',
 ];
 const TEXT_KEYS = [
     'game_maxhdcp', 'game_defaultholes', 'game_netpayin', 'game_netplaces',
@@ -187,6 +188,33 @@ const hasAdminPassword = async (eventId) => {
     return rows.length > 0 && !!rows[0].OptionValue;
 };
 exports.hasAdminPassword = hasAdminPassword;
+// Venmo usernames are 5-30 chars: letters, numbers, underscore, hyphen, must start with a
+// letter (Venmo's real signup rule) -- format-only, there's no public API to confirm an account
+// actually exists. Exported so the client can validate before even attempting a save.
+exports.VENMO_USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{4,29}$/;
+/**
+ * Set (or replace) the admin's Venmo username for this event, used by Tee Times' "pay now"
+ * prompt as the payment recipient. Stored as its own EventOptions row ('venmo_username'), same
+ * pattern as admin_password -- kept out of EventOptionsData/the normal Options round-trip since
+ * it's admin identity data, not a per-game rule. Rejects an obviously malformed value rather
+ * than silently saving something Venmo's own app would never accept.
+ */
+const setVenmoUsername = async (eventId, username) => {
+    const trimmed = username.trim();
+    if (trimmed !== '' && !exports.VENMO_USERNAME_PATTERN.test(trimmed))
+        return false;
+    await config_1.default.query(`INSERT INTO EventOptions (EventID, OptionName, OptionValue, LastUpdateUser)
+     VALUES (?, 'venmo_username', ?, 'app')
+     ON DUPLICATE KEY UPDATE OptionValue = VALUES(OptionValue), LastUpdateDt = CURRENT_TIMESTAMP`, [eventId, trimmed]);
+    return true;
+};
+exports.setVenmoUsername = setVenmoUsername;
+/** The admin's saved Venmo username for this event, or '' if none is set yet. */
+const getVenmoUsername = async (eventId) => {
+    const [rows] = await config_1.default.query(`SELECT OptionValue FROM EventOptions WHERE EventID = ? AND OptionName = 'venmo_username'`, [eventId]);
+    return rows.length > 0 ? rows[0].OptionValue ?? '' : '';
+};
+exports.getVenmoUsername = getVenmoUsername;
 // Places-to-pay and split-percentage keys only, for Net and each of the 4 possible Teams cards —
 // the subset of EventOptionsData a single week's game can override without touching pay-in,
 // team size, or any other event-wide rule. Stored in their own GameOptions table (GameID,
@@ -256,3 +284,31 @@ const resetGamePayoutOverrides = async (gameId, keys) => {
     await config_1.default.query(`DELETE FROM GameOptions WHERE GameID = ? AND OptionName IN (${keys.map(() => '?').join(',')})`, [gameId, ...keys]);
 };
 exports.resetGamePayoutOverrides = resetGamePayoutOverrides;
+/** Reuses the same GameOptions table as the payout overrides above (GameID/OptionName/
+ * OptionValue), under its own 'dblbogey_mode' key -- Matt, 2026-08-22: some weeks are also a
+ * course event/tournament with no double bogey max, and that needs to be settable per week, not
+ * just at the event level. Unlike the payout overrides (a subset of fields a game can tweak),
+ * this is a single tri-state value: row absent = follow the event's own game_grossdblbogey/
+ * game_netdblbogey default; row present = this week explicitly uses that mode instead, 'off'
+ * included (there's no event-level way to say "off" explicitly -- both booleans false already
+ * means off at the event level, but a per-game override needs its own explicit "off" so it's
+ * distinguishable from "no override, whatever off/gross/net the event happens to default to"). */
+const getGameDblBogeyOverride = async (gameId) => {
+    const [rows] = await config_1.default.query(`SELECT OptionValue FROM GameOptions WHERE GameID = ? AND OptionName = 'dblbogey_mode'`, [gameId]);
+    if (rows.length === 0)
+        return null;
+    const v = rows[0].OptionValue;
+    return v === 'off' || v === 'gross' || v === 'net' ? v : null;
+};
+exports.getGameDblBogeyOverride = getGameDblBogeyOverride;
+/** Set (or, with `mode: null`, clear) this week's Double Bogey Max override. Clearing deletes the
+ * row entirely, reverting back to following the event's own default. */
+const saveGameDblBogeyOverride = async (gameId, mode) => {
+    if (mode === null) {
+        await config_1.default.query(`DELETE FROM GameOptions WHERE GameID = ? AND OptionName = 'dblbogey_mode'`, [gameId]);
+        return;
+    }
+    await config_1.default.query(`INSERT INTO GameOptions (GameID, OptionName, OptionValue, LastUpdateUser) VALUES (?, 'dblbogey_mode', ?, 'app')
+     ON DUPLICATE KEY UPDATE OptionValue = VALUES(OptionValue), LastUpdateDt = CURRENT_TIMESTAMP`, [gameId, mode]);
+};
+exports.saveGameDblBogeyOverride = saveGameDblBogeyOverride;

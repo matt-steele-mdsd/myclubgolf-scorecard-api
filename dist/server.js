@@ -1866,11 +1866,11 @@ app.get('/api/games/:id/team-games', async (req, res) => {
 app.post('/api/games/:id/team-games', async (req, res) => {
     try {
         const gameId = parseInt(req.params.id);
-        const { label, teamSize, keepCount, assignMode, lastHoleAll, slot, format } = req.body;
+        const { label, teamSize, keepCount, assignMode, lastHoleAll, slot, format, payout } = req.body;
         if (!label || !assignMode) {
             return res.status(400).json({ error: 'label and assignMode are required' });
         }
-        const teamGameId = await (0, teamGameService_1.createTeamGame)(gameId, label, teamSize, keepCount, assignMode, !!lastHoleAll, slot, format);
+        const teamGameId = await (0, teamGameService_1.createTeamGame)(gameId, label, teamSize, keepCount, assignMode, !!lastHoleAll, slot, format, payout);
         res.json({ teamGameId });
     }
     catch (error) {

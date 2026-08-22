@@ -80,6 +80,12 @@ async function getTeamGameWeeks(eventId) {
     }
     return Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
 }
+function toNullableNumber(v) {
+    if (v === undefined || v === null || v.trim() === '')
+        return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
 /**
  * List every team game (competition) set up for a day's shared Game — an event can now run
  * several concurrent team competitions off the same round (e.g. a 2-person random game and a
@@ -103,6 +109,14 @@ async function listTeamGames(gameId) {
         hasPlayers: Number(r.PlayerCount) > 0,
         slot: r.Slot === null || r.Slot === undefined ? null : Number(r.Slot),
         format: r.Format || 'custom',
+        netCut: r.NetCut === null || r.NetCut === undefined ? null : Number(r.NetCut),
+        netCut9: r.NetCut9 === null || r.NetCut9 === undefined ? null : Number(r.NetCut9),
+        payIn: r.PayIn === null || r.PayIn === undefined ? null : Number(r.PayIn),
+        places: r.Places === null || r.Places === undefined ? null : Number(r.Places),
+        pct1: r.Pct1 === null || r.Pct1 === undefined ? null : Number(r.Pct1),
+        pct2: r.Pct2 === null || r.Pct2 === undefined ? null : Number(r.Pct2),
+        pct3: r.Pct3 === null || r.Pct3 === undefined ? null : Number(r.Pct3),
+        pct4: r.Pct4 === null || r.Pct4 === undefined ? null : Number(r.Pct4),
     }));
 }
 /**
@@ -131,14 +145,33 @@ async function listTeamGames(gameId) {
  * describes the event's standard format, not something to toggle back and forth for a one-off
  * week) -- create it here with `slot` omitted, and it still auto-fills correctly from whichever
  * foursome checks in via Start Game, exactly like an Options-driven slot does.
+ *
+ * `payout` is this row's own Net Cut / Net Cut 9 / Pay In / Places / Pct1-4 -- same purpose as
+ * `lastHoleAll` above: settable independently on a one-off game that has no Options "Teams N"
+ * card to read these from (confirmed with Matt 2026-08-21: a one-off week needs the exact same
+ * game-setup options as a real Teams N card -- payout, net cut, blind draw, playing partner
+ * teams). Blind Draw / Playing Partner Teams have no columns of their own here -- they're just
+ * `assignMode` 'R' (with teamSize locked to 2) / 'G' respectively, already fully expressible via
+ * the existing params, so the create-game modal's Blind Draw / Playing Partner Teams switches
+ * simply drive `teamSize`/`assignMode` before calling this, the same as Options' equivalent
+ * switches already drive a slot's assignMode.
  */
-async function createTeamGame(gameId, label, teamSize, keepCount, assignMode, lastHoleAll, slot, format = 'custom') {
+async function createTeamGame(gameId, label, teamSize, keepCount, assignMode, lastHoleAll, slot, format = 'custom', payout) {
+    const netCut = toNullableNumber(payout?.netCut);
+    const netCut9 = toNullableNumber(payout?.netCut9);
+    const payIn = toNullableNumber(payout?.payIn);
+    const places = payout?.places && payout.places.trim() !== '' ? Math.max(0, Math.min(4, Number(payout.places) || 0)) : null;
+    const pct1 = toNullableNumber(payout?.pct1);
+    const pct2 = toNullableNumber(payout?.pct2);
+    const pct3 = toNullableNumber(payout?.pct3);
+    const pct4 = toNullableNumber(payout?.pct4);
     if (isKeepFormat(format) || isIrishFormat(format)) {
         if (assignMode !== 'G') {
             throw new Error('36/48 and Irish Rumble team games must use Playing Groups assignment');
         }
-        const [result] = await config_1.default.query(`INSERT INTO TeamGame (GameID, Label, TeamSize, KeepCount, AssignMode, LastHoleAll, Slot, Format, LastUpdateUser)
-       VALUES (?, ?, 0, 0, 'G', ?, ?, ?, 'App')`, [gameId, label, lastHoleAll ? 'T' : 'F', slot ?? null, format]);
+        const [result] = await config_1.default.query(`INSERT INTO TeamGame (GameID, Label, TeamSize, KeepCount, AssignMode, LastHoleAll, Slot, Format,
+                              NetCut, NetCut9, PayIn, Places, Pct1, Pct2, Pct3, Pct4, LastUpdateUser)
+       VALUES (?, ?, 0, 0, 'G', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'App')`, [gameId, label, lastHoleAll ? 'T' : 'F', slot ?? null, format, netCut, netCut9, payIn, places, pct1, pct2, pct3, pct4]);
         return result.insertId;
     }
     if (![2, 3, 4].includes(teamSize))
@@ -147,8 +180,10 @@ async function createTeamGame(gameId, label, teamSize, keepCount, assignMode, la
         throw new Error('keepCount must be between 1 and teamSize');
     if (assignMode === 'R' && teamSize !== 2)
         throw new Error('Random assignment is only available for 2-person teams');
-    const [result] = await config_1.default.query(`INSERT INTO TeamGame (GameID, Label, TeamSize, KeepCount, AssignMode, LastHoleAll, Slot, Format, LastUpdateUser)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'App')`, [gameId, label, teamSize, keepCount, assignMode, lastHoleAll ? 'T' : 'F', slot ?? null, format]);
+    const [result] = await config_1.default.query(`INSERT INTO TeamGame (GameID, Label, TeamSize, KeepCount, AssignMode, LastHoleAll, Slot, Format,
+                            NetCut, NetCut9, PayIn, Places, Pct1, Pct2, Pct3, Pct4, LastUpdateUser)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'App')`, [gameId, label, teamSize, keepCount, assignMode, lastHoleAll ? 'T' : 'F', slot ?? null, format,
+        netCut, netCut9, payIn, places, pct1, pct2, pct3, pct4]);
     return result.insertId;
 }
 /**
@@ -313,7 +348,7 @@ async function getShowTeamsListing(gameId) {
  * tie-break), writing to TeamGamePlayer/TeamGame instead of Team/Game.
  */
 async function createRandomTeamGameTeams(teamGameId) {
-    const [tgRows] = await config_1.default.query('SELECT GameID, AssignMode, RandomSet, Slot FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
+    const [tgRows] = await config_1.default.query('SELECT GameID, AssignMode, RandomSet, Slot, NetCut, NetCut9 FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
     if (tgRows.length === 0)
         throw new Error('Team game not found');
     const tg = tgRows[0];
@@ -322,11 +357,15 @@ async function createRandomTeamGameTeams(teamGameId) {
     if (tg.RandomSet === 'T') {
         return { alreadySet: true, teams: await getTeamGameRoster(teamGameId) };
     }
-    // A one-off team game (Slot null) has no Options "Teams N" card to pull a cut from — pass a
-    // prefix that matches no real option key so getGameEligibility resolves cut to null, rather
-    // than accidentally applying Teams 1's cut to an unrelated one-off game.
-    const cutPrefix = tg.Slot ? slotPrefix(tg.Slot) : 'none';
-    const eligibility = await (0, randomTeamsService_1.getGameEligibility)(tg.GameID, cutPrefix);
+    // A one-off team game (Slot null) has no Options "Teams N" card to pull a cut from — it has its
+    // own Net Cut / Net Cut 9 stored directly on this row instead (see createTeamGame), passed
+    // through directly rather than accidentally applying Teams 1's cut to an unrelated one-off game.
+    const eligibility = tg.Slot
+        ? await (0, randomTeamsService_1.getGameEligibility)(tg.GameID, slotPrefix(tg.Slot))
+        : await (0, randomTeamsService_1.getGameEligibility)(tg.GameID, 'none', {
+            full18: tg.NetCut === null || tg.NetCut === undefined ? null : Number(tg.NetCut),
+            nineHole: tg.NetCut9 === null || tg.NetCut9 === undefined ? null : Number(tg.NetCut9),
+        });
     if (eligibility.stillPlaying.length > 0) {
         return { alreadySet: false, teams: [], stillPlaying: eligibility.stillPlaying.map((p) => p.name) };
     }
@@ -663,16 +702,22 @@ async function getTeamGameResults(teamGameId) {
  * The Net Score to Make Cut summary for a specific Teams N team game — unlike
  * randomTeamsService.ts's getCutSummary (which always reads the unprefixed/Teams-1 cut), this
  * reads whichever slot this team game actually belongs to, so Teams 2/3/4 each show their own
- * cut line and missed-cut list instead of Teams 1's.
+ * cut line and missed-cut list instead of Teams 1's. A one-off team game (Slot null) uses its own
+ * Net Cut / Net Cut 9 stored directly on this row instead (see createTeamGame).
  */
 async function getTeamGameCutSummary(teamGameId) {
-    const [tgRows] = await config_1.default.query('SELECT GameID, Slot FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
+    const [tgRows] = await config_1.default.query('SELECT GameID, Slot, NetCut, NetCut9 FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
     if (tgRows.length === 0)
         return { cutLine: null, missedCut: [] };
-    const { GameID: gameId, Slot: slot } = tgRows[0];
-    if (!slot)
+    const { GameID: gameId, Slot: slot, NetCut: netCut, NetCut9: netCut9 } = tgRows[0];
+    if (!slot && netCut === null && netCut9 === null)
         return { cutLine: null, missedCut: [] };
-    const eligibility = await (0, randomTeamsService_1.getGameEligibility)(gameId, slotPrefix(slot));
+    const eligibility = slot
+        ? await (0, randomTeamsService_1.getGameEligibility)(gameId, slotPrefix(slot))
+        : await (0, randomTeamsService_1.getGameEligibility)(gameId, 'none', {
+            full18: netCut === null || netCut === undefined ? null : Number(netCut),
+            nineHole: netCut9 === null || netCut9 === undefined ? null : Number(netCut9),
+        });
     if (eligibility.stillPlaying.length > 0 || eligibility.cut === null) {
         return { cutLine: null, missedCut: [] };
     }

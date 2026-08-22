@@ -146,8 +146,14 @@ async function getPlayerCounts(gameId) {
  * defaults to 'teams' (Teams 1 / the legacy single-team-game system's unprefixed keys) for
  * every existing caller. teamGameService.ts passes 'teams2'/'teams3'/'teams4' when drawing for
  * those slots, so each slot's own cut line is honored instead of always falling back to Teams 1's.
+ *
+ * `directCut`, when passed, bypasses the Options lookup entirely and uses these two values
+ * instead (picking `full18` or `nineHole` based on this call's own computed majorityShape, same
+ * as the Options-driven path) -- used for a one-off team game, which has its own Net Cut / Net
+ * Cut 9 stored directly on its TeamGame row instead of an Options "Teams N" card to read from
+ * (see teamGameService.ts's createRandomTeamGameTeams / getTeamGameCutSummary).
  */
-async function getGameEligibility(gameId, cutOptionPrefix = 'teams') {
+async function getGameEligibility(gameId, cutOptionPrefix = 'teams', directCut) {
     const [gameRows] = await config_1.default.query('SELECT GroupID FROM Game WHERE GameID = ?', [gameId]);
     const options = gameRows.length > 0 ? await (0, optionsService_1.getEventOptions)(gameRows[0].GroupID) : null;
     const counts = await getPlayerCounts(gameId);
@@ -206,9 +212,15 @@ async function getGameEligibility(gameId, cutOptionPrefix = 'teams') {
     if (stillPlaying.length > 0) {
         return { stillPlaying, majorityShape: null, eligiblePlayerIds: [], excludedWrongSide: [], excludedOverCut: [], cut: null };
     }
-    const cutKey = (majorityShape === 'full18' ? `${cutOptionPrefix}_netcut` : `${cutOptionPrefix}_netcut9`);
-    const cutValue = options?.[cutKey];
-    const cut = cutValue && cutValue !== '' ? Number(cutValue) : null;
+    let cut;
+    if (directCut) {
+        cut = majorityShape === 'full18' ? directCut.full18 : directCut.nineHole;
+    }
+    else {
+        const cutKey = (majorityShape === 'full18' ? `${cutOptionPrefix}_netcut` : `${cutOptionPrefix}_netcut9`);
+        const cutValue = options?.[cutKey];
+        cut = cutValue && cutValue !== '' ? Number(cutValue) : null;
+    }
     const excludedOverCut = [];
     const eligiblePlayerIds = [];
     for (const p of matchingMajority) {

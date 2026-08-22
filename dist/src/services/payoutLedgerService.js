@@ -139,6 +139,97 @@ async function syncOneTeamSlotPayout(gameId, prefix, slot, eventOptions, payoutV
     }
     await syncOnePayoutType(gameId, prefix, perPlayerAmounts);
 }
+/**
+ * A one-off team game's own payout (Pay In / Places / Pct1-4 stored directly on its TeamGame
+ * row, not read from an Options "Teams N" card) — same best-ball net split as
+ * syncOneTeamSlotPayout, but sourced from the row's own columns instead of eventOptions/
+ * payoutValues, and keyed under a per-TeamGameID GameType ('oneoff<TeamGameID>') since an event
+ * can have any number of these in a week, unlike the 4 fixed Teams slots.
+ *
+ * Deliberately out of scope for now: computeTotalDayPot's hole-in-one combined pot and
+ * getPayoutReviewForEvent's weekly Net/Teams review don't include one-off team games — both are
+ * built around the fixed 4-slot assumption, and folding a variable number of ad hoc one-off games
+ * into those is a separate piece of work. A hole-in-one day therefore doesn't zero out or
+ * resync a one-off team game's payout the way it does Net/Teams/Skins (see syncGamePayoutLedger).
+ */
+async function syncOneOffTeamGamePayout(gameId, teamGameId) {
+    const gameType = `oneoff${teamGameId}`;
+    const [tgRows] = await config_1.default.query('SELECT PayIn, Places, Pct1, Pct2, Pct3, Pct4 FROM TeamGame WHERE TeamGameID = ?', [teamGameId]);
+    const payIn = tgRows.length > 0 ? Number(tgRows[0].PayIn) || 0 : 0;
+    if (payIn <= 0) {
+        await config_1.default.query('DELETE FROM PlayerPayouts WHERE GameID = ? AND GameType = ?', [gameId, gameType]);
+        return;
+    }
+    const [rosterRows] = await config_1.default.query('SELECT TeamNumber, PlayerID FROM TeamGamePlayer WHERE TeamGameID = ?', [teamGameId]);
+    if (rosterRows.length === 0) {
+        await config_1.default.query('DELETE FROM PlayerPayouts WHERE GameID = ? AND GameType = ?', [gameId, gameType]);
+        return;
+    }
+    const rosterByTeam = new Map();
+    for (const r of rosterRows) {
+        if (!rosterByTeam.has(r.TeamNumber))
+            rosterByTeam.set(r.TeamNumber, []);
+        rosterByTeam.get(r.TeamNumber).push(r.PlayerID);
+    }
+    // Same best-ball net front+back per team query as syncOneTeamSlotPayout.
+    const [totalsRows] = await config_1.default.query(`SELECT allTeams.TeamNumber,
+            IFNULL(f.TeamNetFront, 0) + IFNULL(b.TeamNetBack, 0) AS total
+     FROM (SELECT DISTINCT TeamNumber FROM TeamGamePlayer WHERE TeamGameID = ?) allTeams
+     LEFT OUTER JOIN (
+       SELECT t1.TeamNumber, SUM(t1.HoleNet) AS TeamNetFront
+       FROM (
+         SELECT t.TeamNumber, s.HoleID, MIN(s.NetScore) AS HoleNet
+         FROM TeamGamePlayer t
+         INNER JOIN Score s ON s.GameID = ? AND s.PlayerID = t.PlayerID AND s.HoleID < 10
+         WHERE t.TeamGameID = ?
+         GROUP BY t.TeamNumber, s.HoleID
+       ) t1 GROUP BY t1.TeamNumber
+     ) f ON f.TeamNumber = allTeams.TeamNumber
+     LEFT OUTER JOIN (
+       SELECT t2.TeamNumber, SUM(t2.HoleNet) AS TeamNetBack
+       FROM (
+         SELECT t.TeamNumber, s.HoleID, MIN(s.NetScore) AS HoleNet
+         FROM TeamGamePlayer t
+         INNER JOIN Score s ON s.GameID = ? AND s.PlayerID = t.PlayerID AND s.HoleID > 9
+         WHERE t.TeamGameID = ?
+         GROUP BY t.TeamNumber, s.HoleID
+       ) t2 GROUP BY t2.TeamNumber
+     ) b ON b.TeamNumber = allTeams.TeamNumber`, [teamGameId, gameId, teamGameId, gameId, teamGameId]);
+    // Pot size covers everyone who actually played this one-off's own cut line, cut or no cut --
+    // same "the buy-in applies to the whole field, the cut only gates who can WIN" rule as
+    // syncOneTeamSlotPayout, using this row's own Net Cut / Net Cut 9 instead of an Options prefix.
+    const netCut = tgRows.length > 0 && tgRows[0].NetCut !== null && tgRows[0].NetCut !== undefined ? Number(tgRows[0].NetCut) : null;
+    const netCut9 = tgRows.length > 0 && tgRows[0].NetCut9 !== null && tgRows[0].NetCut9 !== undefined ? Number(tgRows[0].NetCut9) : null;
+    const eligibility = await (0, randomTeamsService_1.getGameEligibility)(gameId, 'none', { full18: netCut, nineHole: netCut9 });
+    const potPlayerCount = eligibility.eligiblePlayerIds.length + eligibility.excludedOverCut.length;
+    const pot = payIn * potPlayerCount;
+    const places = Math.max(0, Math.min(4, Number(tgRows[0]?.Places) || 0));
+    const pctArr = [tgRows[0]?.Pct1, tgRows[0]?.Pct2, tgRows[0]?.Pct3, tgRows[0]?.Pct4]
+        .slice(0, places)
+        .map((v) => (v === null || v === undefined ? '' : String(v)));
+    const placeAmounts = (0, payout_1.computePlaceAmounts)(pot, places, pctArr);
+    const teamPayouts = (0, payout_1.computeTiePayouts)(totalsRows.map((t) => ({ key: t.TeamNumber, value: Number(t.total) })), placeAmounts);
+    const perPlayerAmounts = new Map();
+    for (const tp of teamPayouts) {
+        if (tp.amount <= 0)
+            continue;
+        const roster = rosterByTeam.get(tp.key) ?? [];
+        if (roster.length === 0)
+            continue;
+        const share = tp.amount / roster.length;
+        for (const playerId of roster) {
+            perPlayerAmounts.set(playerId, (perPlayerAmounts.get(playerId) ?? 0) + share);
+        }
+    }
+    await config_1.default.query('DELETE FROM PlayerPayouts WHERE GameID = ? AND GameType = ?', [gameId, gameType]);
+    const entries = Array.from(perPlayerAmounts.entries())
+        .map(([playerId, amount]) => [playerId, (0, money_1.truncateMoneyValue)(amount)])
+        .filter(([, amt]) => amt > 0.001);
+    if (entries.length === 0)
+        return;
+    const values = entries.map(([playerId, amount]) => [gameId, playerId, gameType, amount]);
+    await config_1.default.query('INSERT INTO PlayerPayouts (GameID, PlayerID, GameType, Amount) VALUES ?', [values]);
+}
 async function syncSkinsPayout(gameId, eventOptions) {
     const [countRows] = await config_1.default.query(`SELECT COUNT(DISTINCT s.PlayerID) AS numPlayers,
             (SELECT COUNT(*) FROM Skins sk
@@ -314,6 +405,10 @@ async function syncGamePayoutLedger(gameId) {
     for (const { prefix, slot } of TEAM_SLOTS) {
         await syncOneTeamSlotPayout(gameId, prefix, slot, eventOptions, payoutValues);
     }
+    const [oneOffRows] = await config_1.default.query(`SELECT TeamGameID FROM TeamGame WHERE GameID = ? AND Slot IS NULL AND (Skipped IS NULL OR Skipped != 'T')`, [gameId]);
+    for (const r of oneOffRows) {
+        await syncOneOffTeamGamePayout(gameId, r.TeamGameID);
+    }
     await syncSkinsPayout(gameId, eventOptions);
     const [gameRows] = await config_1.default.query('SELECT GroupID, GameDate FROM Game WHERE GameID = ?', [gameId]);
     if (gameRows.length > 0) {
@@ -408,7 +503,7 @@ async function getSeasonPayoutSummary(eventId) {
     // (potentially differently-priced) Teams cards applies -- a single event can run two different
     // team games the same week (e.g. a blind-draw Teams 1 and a separate 4-man Teams 2), each with
     // its own pay-in, and a player can be in both and owes both.
-    const [teamAppearanceRows] = await config_1.default.query(`SELECT DISTINCT tgp.PlayerID, tg.TeamGameID, tg.Slot
+    const [teamAppearanceRows] = await config_1.default.query(`SELECT DISTINCT tgp.PlayerID, tg.TeamGameID, tg.Slot, tg.PayIn
      FROM TeamGamePlayer tgp
      INNER JOIN TeamGame tg ON tg.TeamGameID = tgp.TeamGameID
      INNER JOIN Game g ON g.GameID = tg.GameID
@@ -431,9 +526,13 @@ async function getSeasonPayoutSummary(eventId) {
     addPaid(skinsPaidRows, skinsPayIn);
     addPaid(grossSkinsPaidRows, grossSkinsPayIn);
     for (const r of teamAppearanceRows) {
-        const slot = r.Slot ?? 1;
-        const prefix = slot === 1 ? 'teams' : `teams${slot}`;
-        const rate = Number(eventOptions[`${prefix}_payin`]) || 0;
+        // A one-off team game (Slot null) has its own PayIn stored directly on its row -- it must
+        // NOT fall back to Teams 1's Options rate the way `slot ?? 1` used to (fixed 2026-08-21: every
+        // one-off team game player was silently being charged Teams 1's pay-in here, regardless of
+        // what the one-off's own Pay In was actually set to, or whether Teams 1 even had a payout).
+        const rate = r.Slot === null || r.Slot === undefined
+            ? Number(r.PayIn) || 0
+            : Number(eventOptions[`${r.Slot === 1 ? 'teams' : `teams${r.Slot}`}_payin`]) || 0;
         if (rate > 0) {
             paidById.set(r.PlayerID, (paidById.get(r.PlayerID) ?? 0) + rate);
         }

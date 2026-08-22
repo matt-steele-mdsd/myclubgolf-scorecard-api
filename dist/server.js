@@ -2563,6 +2563,22 @@ app.delete('/api/feedback/:id', async (req, res) => {
         res.status(500).json({ error: 'Failed to delete feedback' });
     }
 });
+// Mark (or unmark) one feedback entry resolved -- same master-event-only UI gate as delete above.
+app.post('/api/feedback/:id/resolved', async (req, res) => {
+    try {
+        const feedbackId = parseInt(req.params.id);
+        const { resolved } = req.body;
+        if (typeof resolved !== 'boolean') {
+            return res.status(400).json({ error: 'resolved (boolean) is required' });
+        }
+        await (0, feedbackService_1.setFeedbackResolved)(feedbackId, resolved);
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Error setting feedback resolved status:', error.message);
+        res.status(500).json({ error: 'Failed to set feedback resolved status' });
+    }
+});
 // Database connectivity test endpoint
 app.get('/api/db-test', async (req, res) => {
     try {

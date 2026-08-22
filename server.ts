@@ -44,7 +44,7 @@ import { getNaughtyList, recheckLatePosting, getGhinPlayerList, getGhinSummary, 
 import { getEventOptions, saveEventOptions, setAdminPassword, verifyAdminPassword, hasAdminPassword, getEffectiveGamePayoutOptions, saveGamePayoutOverrides, resetGamePayoutOverrides, getGameDblBogeyOverride, saveGameDblBogeyOverride, getVenmoUsername, setVenmoUsername } from './src/services/optionsService';
 import { getLinkedEventId, ensurePlayerLinkedToEvent } from './src/services/teeTimesLinkService';
 import { syncGamePayoutLedger, getSeasonPayoutSummary, getPayoutReviewForEvent, getHoleInOneCelebration, getWeekPurse } from './src/services/payoutLedgerService';
-import { submitFeedback, getFeedback, deleteFeedback } from './src/services/feedbackService';
+import { submitFeedback, getFeedback, deleteFeedback, setFeedbackResolved } from './src/services/feedbackService';
 import { getUpsCupWinners, setUpsCupWinner, deleteUpsCupWinner, getMajorWinners, getUpsPointsForGame, getIneligiblePlayers, getCurrentStandings, getPaidPlayers, setPlayerPaid, removePlayerPaid } from './src/services/upsCupService';
 import { getBirdieLeaderboard, getPlayerBirdieStatus, getHoleBirdieDetail } from './src/services/birdieRaceService';
 import { getCalendarForYear, setCalendarDay, deleteCalendarDay } from './src/services/calendarService';
@@ -2591,6 +2591,22 @@ app.delete('/api/feedback/:id', async (req, res) => {
   } catch (error: any) {
     console.error('Error deleting feedback:', error.message);
     res.status(500).json({ error: 'Failed to delete feedback' });
+  }
+});
+
+// Mark (or unmark) one feedback entry resolved -- same master-event-only UI gate as delete above.
+app.post('/api/feedback/:id/resolved', async (req, res) => {
+  try {
+    const feedbackId = parseInt(req.params.id);
+    const { resolved } = req.body;
+    if (typeof resolved !== 'boolean') {
+      return res.status(400).json({ error: 'resolved (boolean) is required' });
+    }
+    await setFeedbackResolved(feedbackId, resolved);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error setting feedback resolved status:', error.message);
+    res.status(500).json({ error: 'Failed to set feedback resolved status' });
   }
 });
 

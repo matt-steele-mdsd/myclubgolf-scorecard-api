@@ -12,6 +12,11 @@ export interface FeedbackEntry {
   description: string;
   submittedBy: string;
   dateEntered: string;
+  /** Marked once the bug's fixed / the idea's been actioned or declined -- hidden from the log
+   * by default (app/feedback.tsx's "Show Resolved" toggle), same "don't delete valid history,
+   * just get it out of the way" reasoning Matt gave 2026-08-22: "the one that is there is valid
+   * and has been fixed" (not spam -- shouldn't be deleted, just marked done). */
+  resolved: boolean;
 }
 
 export async function submitFeedback(
@@ -28,7 +33,7 @@ export async function submitFeedback(
 
 export async function getFeedback(): Promise<FeedbackEntry[]> {
   const [rows] = await pool.query<any[]>(
-    `SELECT FeedbackID, Type, Title, Description, SubmittedBy, DateEntered FROM Feedback ORDER BY DateEntered DESC`
+    `SELECT FeedbackID, Type, Title, Description, SubmittedBy, DateEntered, Resolved FROM Feedback ORDER BY DateEntered DESC`
   );
   return rows.map((r) => ({
     id: r.FeedbackID,
@@ -37,7 +42,13 @@ export async function getFeedback(): Promise<FeedbackEntry[]> {
     description: r.Description || '',
     submittedBy: r.SubmittedBy || '',
     dateEntered: r.DateEntered,
+    resolved: !!r.Resolved,
   }));
+}
+
+/** Mark (or unmark) one feedback entry resolved -- see FeedbackEntry.resolved's doc comment. */
+export async function setFeedbackResolved(feedbackId: number, resolved: boolean): Promise<void> {
+  await pool.query('UPDATE Feedback SET Resolved = ? WHERE FeedbackID = ?', [resolved ? 1 : 0, feedbackId]);
 }
 
 /** Delete one feedback entry (spam/duplicate cleanup) -- Matt, 2026-08-22: the master ("mdsd")

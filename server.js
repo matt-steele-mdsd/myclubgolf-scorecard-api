@@ -1529,10 +1529,11 @@ app.get('/api/events/:id/status', async (req, res) => {
     }
 });
 // Save player In/Out status endpoint -- writes to this event only (single source of truth per
-// sign-up, the merged GET above handles surfacing it on either linked event's screen), but also
-// auto-provisions the player onto a linked event's own roster if they're not already on it (see
-// teeTimesLinkService.ts's ensurePlayerLinkedToEvent), so their name is selectable there too
-// going forward without the admin ever adding them twice.
+// sign-up), but also auto-provisions the player onto this event's linked partner's own roster if
+// they're not already on it (see teeTimesLinkService.ts's ensurePlayerLinkedToEvent), so their
+// name is selectable there too going forward without the admin ever adding them twice. One-
+// directional, same as the link itself -- only fires when marking status on the event that
+// actually has the link configured; the linked-to event's own screen never triggers this.
 app.post('/api/events/:id/status', async (req, res) => {
     try {
         const eventId = parseInt(req.params.id);
@@ -2546,6 +2547,20 @@ app.get('/api/feedback', async (req, res) => {
     catch (error) {
         console.error('Error fetching feedback:', error.message);
         res.status(500).json({ error: 'Failed to fetch feedback' });
+    }
+});
+// Delete one feedback entry (spam/duplicate cleanup) -- no server-side admin check here, same as
+// every other route; app/feedback.tsx only shows the delete button at all when the current event
+// is the master ("mdsd") event, same gate Master Tools itself uses.
+app.delete('/api/feedback/:id', async (req, res) => {
+    try {
+        const feedbackId = parseInt(req.params.id);
+        await (0, feedbackService_1.deleteFeedback)(feedbackId);
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Error deleting feedback:', error.message);
+        res.status(500).json({ error: 'Failed to delete feedback' });
     }
 });
 // Database connectivity test endpoint

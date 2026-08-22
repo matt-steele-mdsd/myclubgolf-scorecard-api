@@ -36,6 +36,7 @@ const grossSkinsPaidService_1 = require("./src/services/grossSkinsPaidService");
 const grossSkinsService_1 = require("./src/services/grossSkinsService");
 const ghinService_1 = require("./src/services/ghinService");
 const optionsService_1 = require("./src/services/optionsService");
+const teeTimesLinkService_1 = require("./src/services/teeTimesLinkService");
 const payoutLedgerService_1 = require("./src/services/payoutLedgerService");
 const feedbackService_1 = require("./src/services/feedbackService");
 const upsCupService_1 = require("./src/services/upsCupService");
@@ -349,6 +350,29 @@ app.get('/api/events/:id/players', async (req, res) => {
     catch (error) {
         console.error('Error fetching players:', error.message);
         res.status(500).json({ error: 'Failed to fetch players' });
+    }
+});
+// Players eligible to sign up on Tee Times -- this event's own roster, plus a linked event's
+// roster too if Link Tee Times is on (see teeTimesLinkService.ts). Deliberately separate from
+// the general /players endpoint above (used by Start Game, UPS Cup, etc.) -- merging rosters
+// there would let a linked event's players show up for SCORING in the wrong event, not just
+// tee-time sign-ups (confirmed real risk while building this, 2026-08-22).
+app.get('/api/events/:id/teetimes-players', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id);
+        const linkedEventId = await (0, teeTimesLinkService_1.getLinkedEventId)(eventId);
+        const eventIds = linkedEventId ? [eventId, linkedEventId] : [eventId];
+        const [rows] = await config_1.default.query(`SELECT DISTINCT p.PlayerID AS id, p.LastName, p.FirstName, p.Gender
+       FROM Player p
+       WHERE p.PlayerID IN (
+         SELECT ep.PlayerID FROM EventPlayers ep WHERE ep.EventID IN (?)
+       )
+       ORDER BY p.LastName, p.FirstName`, [eventIds]);
+        res.json(rows);
+    }
+    catch (error) {
+        console.error('Error fetching tee times players:', error.message);
+        res.status(500).json({ error: 'Failed to fetch tee times players' });
     }
 });
 // Add a player to an event endpoint (mirrors addplayer.php, minus the Handicap field)
@@ -672,15 +696,29 @@ app.post('/api/events', async (req, res) => {
         res.status(500).json({ error: 'Failed to create event' });
     }
 });
-// Get tee times for an event endpoint
+// Get tee times for an event endpoint -- merges a linked event's own tee-date rows in too, if
+// Link Tee Times is on. If both events happen to have their own row for the same date (shouldn't
+// really happen once whichever admin owns that date stops double-entering it), this event's own
+// row wins -- see teeTimesLinkService.ts's doc comment for the real scenario this solves.
 app.get('/api/events/:id/teetimes', async (req, res) => {
     try {
         const eventId = parseInt(req.params.id);
-        const [rows] = await config_1.default.query(`SELECT TeeDate, Time1, Time2, Time3, Time4, Time5
+        const linkedEventId = await (0, teeTimesLinkService_1.getLinkedEventId)(eventId);
+        const eventIds = linkedEventId ? [eventId, linkedEventId] : [eventId];
+        const [rows] = await config_1.default.query(`SELECT GroupID, TeeDate, Time1, Time2, Time3, Time4, Time5
        FROM TeeTimes
-       WHERE GroupID = ? AND TeeDate >= CURDATE()
-       ORDER BY TeeDate`, [eventId]);
-        res.json(rows);
+       WHERE GroupID IN (?) AND TeeDate >= CURDATE()
+       ORDER BY TeeDate`, [eventIds]);
+        const byDate = new Map();
+        for (const r of rows) {
+            const key = String(r.TeeDate);
+            if (!byDate.has(key) || r.GroupID === eventId)
+                byDate.set(key, r);
+        }
+        const merged = Array.from(byDate.values())
+            .sort((a, b) => (a.TeeDate < b.TeeDate ? -1 : a.TeeDate > b.TeeDate ? 1 : 0))
+            .map(({ GroupID, ...rest }) => rest);
+        res.json(merged);
     }
     catch (error) {
         console.error('Error fetching tee times:', error.message);
@@ -1458,7 +1496,10 @@ app.get('/api/events/:id/opted-out', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch opted-out players' });
     }
 });
-// Get player status for a date endpoint
+// Get player status for a date endpoint -- merges a linked event's own sign-ups in too, if Link
+// Tee Times is on. A player who somehow has a status row in BOTH linked events for the same date
+// (shouldn't normally happen once auto-provisioning keeps their roster membership in sync) has
+// this event's own row win.
 app.get('/api/events/:id/status', async (req, res) => {
     try {
         const eventId = parseInt(req.params.id);
@@ -1466,19 +1507,32 @@ app.get('/api/events/:id/status', async (req, res) => {
         if (!teeDate) {
             return res.status(400).json({ error: 'teeDate query param required' });
         }
-        const [rows] = await config_1.default.query(`SELECT p.LastName, p.FirstName, ps.Status
+        const linkedEventId = await (0, teeTimesLinkService_1.getLinkedEventId)(eventId);
+        const eventIds = linkedEventId ? [eventId, linkedEventId] : [eventId];
+        const [rows] = await config_1.default.query(`SELECT ps.PlayerID, p.LastName, p.FirstName, ps.Status, ps.GroupID
        FROM PlayerStatus ps
        INNER JOIN Player p ON p.PlayerID = ps.PlayerID
-       WHERE ps.GroupID = ? AND ps.TeeDate = ?
-       ORDER BY ps.LastUpdateDt ASC`, [eventId, teeDate]);
-        res.json(rows);
+       WHERE ps.GroupID IN (?) AND ps.TeeDate = ?
+       ORDER BY ps.LastUpdateDt ASC`, [eventIds, teeDate]);
+        const byPlayer = new Map();
+        for (const r of rows) {
+            const existing = byPlayer.get(r.PlayerID);
+            if (!existing || r.GroupID === eventId)
+                byPlayer.set(r.PlayerID, r);
+        }
+        const merged = Array.from(byPlayer.values()).map(({ GroupID, PlayerID, ...rest }) => rest);
+        res.json(merged);
     }
     catch (error) {
         console.error('Error fetching player status:', error.message);
         res.status(500).json({ error: 'Failed to fetch player status' });
     }
 });
-// Save player In/Out status endpoint
+// Save player In/Out status endpoint -- writes to this event only (single source of truth per
+// sign-up, the merged GET above handles surfacing it on either linked event's screen), but also
+// auto-provisions the player onto a linked event's own roster if they're not already on it (see
+// teeTimesLinkService.ts's ensurePlayerLinkedToEvent), so their name is selectable there too
+// going forward without the admin ever adding them twice.
 app.post('/api/events/:id/status', async (req, res) => {
     try {
         const eventId = parseInt(req.params.id);
@@ -1494,6 +1548,9 @@ app.post('/api/events/:id/status', async (req, res) => {
         await config_1.default.query(`INSERT INTO PlayerStatus (GroupID, TeeDate, PlayerID, Status)
        VALUES (?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE Status = VALUES(Status)`, [eventId, teeDate, playerId, status]);
+        const linkedEventId = await (0, teeTimesLinkService_1.getLinkedEventId)(eventId);
+        if (linkedEventId)
+            await (0, teeTimesLinkService_1.ensurePlayerLinkedToEvent)(playerId, linkedEventId);
         res.json({ message: 'Status saved' });
     }
     catch (error) {

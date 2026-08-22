@@ -133,6 +133,18 @@ export interface EventOptionsData {
    * (see setVenmoUsername/getVenmoUsername below, stored the same special-row way as
    * admin_password, not as a normal EventOptionsData field -- confirmed with Matt 2026-08-22). */
   venmo_autopay_enabled: boolean;
+  /** Whether this event's Tee Times screen also shows/merges another event's tee times and
+   * sign-ups -- off by default. Symmetric once set: the OTHER (linked) event's own Tee Times
+   * screen shows the same merged view automatically, without needing its own separate setup --
+   * see teeTimesLinkService.ts's getLinkedEventId. Requires link_teetimes_eventid to also be
+   * set. Real scenario this solves (Matt, 2026-08-22): two same-course events ("Cron" and
+   * "Tommy Davis") that were being kept in sync by manually entering the same tee times/sign-ups
+   * into both, by hand. */
+  link_teetimes_enabled: boolean;
+  /** The other event's EventID this event links to, when link_teetimes_enabled is on. Stored as
+   * plain text (no FK enforced anywhere in this schema -- same as every other cross-row
+   * reference in the app, see orphanService.ts's ORPHAN_CHECKS). */
+  link_teetimes_eventid: string;
 }
 
 // Default options for any event with no EventOptions rows yet — including brand-new events,
@@ -226,6 +238,8 @@ const DEFAULTS: EventOptionsData = {
   checkpaid: false,
   hidden_from_search: false,
   venmo_autopay_enabled: false,
+  link_teetimes_enabled: false,
+  link_teetimes_eventid: '',
 };
 
 const BOOLEAN_KEYS = [
@@ -237,7 +251,7 @@ const BOOLEAN_KEYS = [
   'skins_halfpar3', 'skins_nonepar3', 'skins_halfall', 'skins_maxone',
   'gross_skins_enabled',
   'ups_enabled', 'ups_includeprioryears', 'ups_majorsauto', 'checkpaid',
-  'hidden_from_search', 'venmo_autopay_enabled',
+  'hidden_from_search', 'venmo_autopay_enabled', 'link_teetimes_enabled',
 ] as const;
 
 const TEXT_KEYS = [
@@ -257,6 +271,7 @@ const TEXT_KEYS = [
   'teams4_teamsize', 'teams4_keepcount', 'teams4_format',
   'skins_payin', 'gross_skins_payin',
   'ups_minevents', 'ups_numscores', 'ups_numplayers', 'ups_yearsexemption',
+  'link_teetimes_eventid',
 ] as const;
 
 /** Get an event's options (mirrors options.php), falling back to legacy defaults for any unset option. */

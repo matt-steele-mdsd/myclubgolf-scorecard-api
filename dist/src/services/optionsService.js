@@ -96,6 +96,8 @@ const DEFAULTS = {
     checkpaid: false,
     hidden_from_search: false,
     venmo_autopay_enabled: false,
+    link_teetimes_enabled: false,
+    link_teetimes_eventid: '',
 };
 const BOOLEAN_KEYS = [
     'game_grossdblbogey', 'game_netdblbogey', 'women_hdcp_holes',
@@ -106,7 +108,7 @@ const BOOLEAN_KEYS = [
     'skins_halfpar3', 'skins_nonepar3', 'skins_halfall', 'skins_maxone',
     'gross_skins_enabled',
     'ups_enabled', 'ups_includeprioryears', 'ups_majorsauto', 'checkpaid',
-    'hidden_from_search', 'venmo_autopay_enabled',
+    'hidden_from_search', 'venmo_autopay_enabled', 'link_teetimes_enabled',
 ];
 const TEXT_KEYS = [
     'game_maxhdcp', 'game_defaultholes', 'game_netpayin', 'game_netplaces',
@@ -125,6 +127,7 @@ const TEXT_KEYS = [
     'teams4_teamsize', 'teams4_keepcount', 'teams4_format',
     'skins_payin', 'gross_skins_payin',
     'ups_minevents', 'ups_numscores', 'ups_numplayers', 'ups_yearsexemption',
+    'link_teetimes_eventid',
 ];
 /** Get an event's options (mirrors options.php), falling back to legacy defaults for any unset option. */
 const getEventOptions = async (eventId) => {

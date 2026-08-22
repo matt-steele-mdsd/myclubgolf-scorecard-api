@@ -133,17 +133,20 @@ export interface EventOptionsData {
    * (see setVenmoUsername/getVenmoUsername below, stored the same special-row way as
    * admin_password, not as a normal EventOptionsData field -- confirmed with Matt 2026-08-22). */
   venmo_autopay_enabled: boolean;
-  /** Whether this event's Tee Times screen also shows/merges another event's tee times and
-   * sign-ups -- off by default. Symmetric once set: the OTHER (linked) event's own Tee Times
-   * screen shows the same merged view automatically, without needing its own separate setup --
-   * see teeTimesLinkService.ts's getLinkedEventId. Requires link_teetimes_eventid to also be
-   * set. Real scenario this solves (Matt, 2026-08-22): two same-course events ("Cron" and
-   * "Tommy Davis") that were being kept in sync by manually entering the same tee times/sign-ups
-   * into both, by hand. */
+  /** Whether this event's Tee Times screen also shows/merges other events' tee times and
+   * sign-ups -- off by default. One-directional: only THIS event's screen shows the merged view;
+   * the linked-to events are completely unaffected and just show their own tee times, same as
+   * always (corrected with Matt 2026-08-22 -- originally built symmetric, which was wrong: a
+   * linked-to event never opted into anything). See teeTimesLinkService.ts's getLinkedEventIds.
+   * Requires link_teetimes_eventid to also be set. Real scenario this solves: same-course events
+   * ("Cron" and "Tommy Davis") that were being kept in sync by manually entering the same tee
+   * times/sign-ups into each, by hand -- Cron links to Tommy Davis and stops double-entering. */
   link_teetimes_enabled: boolean;
-  /** The other event's EventID this event links to, when link_teetimes_enabled is on. Stored as
-   * plain text (no FK enforced anywhere in this schema -- same as every other cross-row
-   * reference in the app, see orphanService.ts's ORPHAN_CHECKS). */
+  /** Comma-separated list of other events' EventIDs this event links to, when
+   * link_teetimes_enabled is on (multiple partners supported since 2026-08-22 -- Matt: "Cron may
+   * want to show tee times for more than one other event"). Stored as plain text (no FK enforced
+   * anywhere in this schema -- same as every other cross-row reference in the app, see
+   * orphanService.ts's ORPHAN_CHECKS). Parsed by teeTimesLinkService.ts's getLinkedEventIds. */
   link_teetimes_eventid: string;
 }
 

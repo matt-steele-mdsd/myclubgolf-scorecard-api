@@ -1413,11 +1413,12 @@ export interface EventOptions {
    * getVenmoUsername/saveVenmoUsername -- stored separately, not part of this options object,
    * same pattern as the admin password). */
   venmo_autopay_enabled: boolean;
-  /** Whether this event's Tee Times screen also shows/merges another event's tee times and
+  /** Whether this event's Tee Times screen also shows/merges other events' tee times and
    * sign-ups. One-directional -- only this event's own screen shows the merge, the linked-to
-   * event is unaffected. See optionsService.ts's doc comment. */
+   * events are unaffected. See optionsService.ts's doc comment. */
   link_teetimes_enabled: boolean;
-  /** The other event's EventID this event links to, when link_teetimes_enabled is on. */
+  /** Comma-separated list of other events' EventIDs this event links to, when
+   * link_teetimes_enabled is on -- multiple partners supported. */
   link_teetimes_eventid: string;
 }
 

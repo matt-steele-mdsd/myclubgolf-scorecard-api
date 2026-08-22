@@ -192,6 +192,12 @@ async function getIneligiblePlayers(eventId, year) {
        WHERE p.PlayerID IN (SELECT PlayerID FROM EventPlayers WHERE EventID = ?)`, [eventId]);
         for (const player of playerRows) {
             const played = playedCount.get(player.id) || 0;
+            // Skip anyone who hasn't played a single qualifying event yet -- of course they "can't
+            // qualify" in that trivial sense, but that's not a meaningful elimination the way it is
+            // for someone who tried and ran out of remaining events; it's just noise from every
+            // never-showed-up roster member (confirmed with Matt 2026-08-22).
+            if (played === 0)
+                continue;
             if (played + remaining < minEvents) {
                 ineligible.push({
                     playerId: player.id,

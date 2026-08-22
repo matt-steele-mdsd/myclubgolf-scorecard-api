@@ -37,7 +37,7 @@ import {
   getInvalidNamePlayers, getGameSwapPreview, swapPlayersInGame,
 } from './src/services/playerMergeService';
 import { addTeeTime } from './src/services/teetimesService';
-import { getPaidTrackerList, setPaidTracker } from './src/services/paidTrackerService';
+import { getPaidTrackerList, setPaidTracker, getRefundNeededList } from './src/services/paidTrackerService';
 import { getGrossSkinsPaidList, setGrossSkinsPaid, hasAnyGrossSkinsPaidForGame, getGrossSkinsTrackerDates } from './src/services/grossSkinsPaidService';
 import { getGrossSkinsForHole, getGrossSkinsTotals, recalculateAllGrossSkins } from './src/services/grossSkinsService';
 import { getNaughtyList, recheckLatePosting, getGhinPlayerList, getGhinSummary, getGhinYears, searchGhinWithHistoryFallback, linkPlayerGhin, findEasyGhinLinks, setPlayerGhinSkip, getPlayerCourseHandicaps, refreshGhinIndexes, searchGhinCourses, getGhinCourseDetail } from './src/services/ghinService';
@@ -733,6 +733,22 @@ app.post('/api/events/:id/paid-tracker', async (req, res) => {
   } catch (error: any) {
     console.error('Error setting paid tracker status:', error.message);
     res.status(500).json({ error: 'Failed to set paid tracker status' });
+  }
+});
+
+// Who's marked Out for this tee date but still shows paid (Tee Times' refund-needed flag)
+app.get('/api/events/:id/refund-needed', async (req, res) => {
+  try {
+    const eventId = parseInt(req.params.id);
+    const teeDate = req.query.teeDate as string;
+    if (!teeDate) {
+      return res.status(400).json({ error: 'teeDate query param required' });
+    }
+    const rows = await getRefundNeededList(eventId, teeDate);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Error fetching refund-needed list:', error.message);
+    res.status(500).json({ error: 'Failed to fetch refund-needed list' });
   }
 });
 

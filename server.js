@@ -719,6 +719,22 @@ app.post('/api/events/:id/paid-tracker', async (req, res) => {
         res.status(500).json({ error: 'Failed to set paid tracker status' });
     }
 });
+// Who's marked Out for this tee date but still shows paid (Tee Times' refund-needed flag)
+app.get('/api/events/:id/refund-needed', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id);
+        const teeDate = req.query.teeDate;
+        if (!teeDate) {
+            return res.status(400).json({ error: 'teeDate query param required' });
+        }
+        const rows = await (0, paidTrackerService_1.getRefundNeededList)(eventId, teeDate);
+        res.json(rows);
+    }
+    catch (error) {
+        console.error('Error fetching refund-needed list:', error.message);
+        res.status(500).json({ error: 'Failed to fetch refund-needed list' });
+    }
+});
 // Get everyone registered for a tee date, with Gross Skins paid status (Admin -> Gross Skins Tracker)
 app.get('/api/events/:id/gross-skins-tracker', async (req, res) => {
     try {

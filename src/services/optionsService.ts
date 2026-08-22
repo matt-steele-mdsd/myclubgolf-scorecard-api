@@ -354,15 +354,26 @@ export const hasAdminPassword = async (eventId: number): Promise<boolean> => {
 // actually exists. Exported so the client can validate before even attempting a save.
 export const VENMO_USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{4,29}$/;
 
+/** Strips a leading "@" and surrounding whitespace -- Venmo's own app always displays/shares
+ * usernames with a leading "@" (e.g. "@John-Smith-12"), so admins naturally paste/type it that
+ * way even though the underlying username itself never includes it (confirmed with Matt
+ * 2026-08-22). Duplicated (not imported) from src/utils/venmoUsername.ts's identical function --
+ * same reason as VENMO_USERNAME_PATTERN's own duplication note below. */
+function normalizeVenmoUsername(input: string): string {
+  return input.trim().replace(/^@/, '');
+}
+
 /**
  * Set (or replace) the admin's Venmo username for this event, used by Tee Times' "pay now"
  * prompt as the payment recipient. Stored as its own EventOptions row ('venmo_username'), same
  * pattern as admin_password -- kept out of EventOptionsData/the normal Options round-trip since
  * it's admin identity data, not a per-game rule. Rejects an obviously malformed value rather
- * than silently saving something Venmo's own app would never accept.
+ * than silently saving something Venmo's own app would never accept. Normalizes (strips a
+ * leading "@") before validating/storing as defense in depth even though the client already does
+ * the same -- this is the actual point of truth for what ends up in the DB.
  */
 export const setVenmoUsername = async (eventId: number, username: string): Promise<boolean> => {
-  const trimmed = username.trim();
+  const trimmed = normalizeVenmoUsername(username);
   if (trimmed !== '' && !VENMO_USERNAME_PATTERN.test(trimmed)) return false;
   await pool.query(
     `INSERT INTO EventOptions (EventID, OptionName, OptionValue, LastUpdateUser)

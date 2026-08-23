@@ -361,8 +361,10 @@ export const VENMO_USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{4,29}$/;
  * usernames with a leading "@" (e.g. "@John-Smith-12"), so admins naturally paste/type it that
  * way even though the underlying username itself never includes it (confirmed with Matt
  * 2026-08-22). Duplicated (not imported) from src/utils/venmoUsername.ts's identical function --
- * same reason as VENMO_USERNAME_PATTERN's own duplication note below. */
-function normalizeVenmoUsername(input: string): string {
+ * same reason as VENMO_USERNAME_PATTERN's own duplication note below. Exported so other
+ * server-only files (e.g. teamGameService.ts's one-off game Venmo override) can reuse it instead
+ * of duplicating it a third time -- both already live server-side, so no bundling concern. */
+export function normalizeVenmoUsername(input: string): string {
   return input.trim().replace(/^@/, '');
 }
 

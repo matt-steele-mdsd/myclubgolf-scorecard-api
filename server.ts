@@ -27,7 +27,7 @@ import {
   getTeamGameScorecard, addOrUpdateGroupTeam, skipTeamGameSlot, getTeamGameWeeks, getTeamGameCutSummary,
   getShowTeamsListing, getKeepFormatTeamsForPlayers, getTeamGameHoleKeepCounts, saveTeamGameHoleKeepCount,
   getTeamGameLiveLeaderboard, getTeamBestPossible, getBestPossibleWeeks,
-  getIrishRumbleTeamsForPlayers, getFixedKeepLiveLeaderboard,
+  getIrishRumbleTeamsForPlayers, getFixedKeepLiveLeaderboard, getTeeDateVenmoOverride,
 } from './src/services/teamGameService';
 import { upsertPlayingGroup, getPlayingGroup } from './src/services/playingGroupService';
 import { addPlayer, getUnlinkedPlayers, linkPlayers, getPlayerListForEvent, renamePlayer, assignGuestPlayer } from './src/services/playerService';
@@ -1212,6 +1212,24 @@ app.post('/api/events/:id/venmo-username', async (req, res) => {
   } catch (error: any) {
     console.error('Error setting Venmo username:', error.message);
     res.status(500).json({ error: 'Failed to set Venmo username' });
+  }
+});
+
+// A one-off team game's own Venmo override for this date, if one was set (see
+// getTeeDateVenmoOverride) -- null if none. Tee Times' "pay now" prompt prefers this over the
+// admin's own venmo-username when present.
+app.get('/api/events/:id/venmo-override', async (req, res) => {
+  try {
+    const eventId = parseInt(req.params.id);
+    const teeDate = req.query.teeDate as string;
+    if (!teeDate) {
+      return res.status(400).json({ error: 'teeDate query param required' });
+    }
+    const venmoUsername = await getTeeDateVenmoOverride(eventId, teeDate);
+    res.json({ venmoUsername });
+  } catch (error: any) {
+    console.error('Error fetching Venmo override:', error.message);
+    res.status(500).json({ error: 'Failed to fetch Venmo override' });
   }
 });
 

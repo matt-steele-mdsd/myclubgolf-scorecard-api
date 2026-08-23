@@ -1,6 +1,6 @@
 import pool from '../db/config';
 import { getGameEligibility, getRandomTeamsListing } from './randomTeamsService';
-import { getEventOptions } from './optionsService';
+import { getEventOptions, VENMO_USERNAME_PATTERN, normalizeVenmoUsername } from './optionsService';
 import {
   computeValidKeepChoices, targetForTeamSize, TEAMS_KEEP_FORMAT,
   IRISH_RUMBLE_FORMAT, irishRumbleKeepCountForHole,
@@ -98,6 +98,12 @@ export interface TeamGamePayoutInput {
   pct2?: string;
   pct3?: string;
   pct4?: string;
+  // Who to actually Venmo for THIS one-off game's Pay In, when it's someone other than the
+  // event's regular admin (e.g. the admin can't make it that week and a co-organizer is
+  // collecting instead) -- see getTeeDateVenmoOverride's own doc comment for how Tee Times'
+  // Venmo Auto-Pay prompt picks this up. Optional; leave unset/blank to keep using the admin's
+  // own Venmo username, same as every other week.
+  venmoUsername?: string;
 }
 
 function toNullableNumber(v?: string): number | null {
@@ -144,6 +150,9 @@ export interface TeamGameSummary {
   // keep count that depends on the hole number itself -- see irishRumbleKeepCountForHole). Always
   // 'custom' for anything created before this existed.
   format: string;
+  // See TeamGamePayoutInput.venmoUsername. Null for every team game except a one-off that
+  // explicitly set a substitute collector.
+  venmoUsername: string | null;
 }
 
 /**
@@ -180,6 +189,7 @@ export async function listTeamGames(gameId: number): Promise<TeamGameSummary[]> 
     pct2: r.Pct2 === null || r.Pct2 === undefined ? null : Number(r.Pct2),
     pct3: r.Pct3 === null || r.Pct3 === undefined ? null : Number(r.Pct3),
     pct4: r.Pct4 === null || r.Pct4 === undefined ? null : Number(r.Pct4),
+    venmoUsername: r.VenmoUsername || null,
   }));
 }
 
@@ -239,6 +249,11 @@ export async function createTeamGame(
   const pct2 = toNullableNumber(payout?.pct2);
   const pct3 = toNullableNumber(payout?.pct3);
   const pct4 = toNullableNumber(payout?.pct4);
+  const venmoTrimmed = normalizeVenmoUsername(payout?.venmoUsername ?? '');
+  if (venmoTrimmed !== '' && !VENMO_USERNAME_PATTERN.test(venmoTrimmed)) {
+    throw new Error('Not a valid Venmo username format');
+  }
+  const venmoUsername = venmoTrimmed || null;
 
   if (isKeepFormat(format) || isIrishFormat(format)) {
     if (assignMode !== 'G') {
@@ -246,9 +261,9 @@ export async function createTeamGame(
     }
     const [result] = await pool.query<any>(
       `INSERT INTO TeamGame (GameID, Label, TeamSize, KeepCount, AssignMode, LastHoleAll, Slot, Format,
-                              NetCut, NetCut9, PayIn, Places, Pct1, Pct2, Pct3, Pct4, LastUpdateUser)
-       VALUES (?, ?, 0, 0, 'G', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'App')`,
-      [gameId, label, lastHoleAll ? 'T' : 'F', slot ?? null, format, netCut, netCut9, payIn, places, pct1, pct2, pct3, pct4]
+                              NetCut, NetCut9, PayIn, Places, Pct1, Pct2, Pct3, Pct4, VenmoUsername, LastUpdateUser)
+       VALUES (?, ?, 0, 0, 'G', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'App')`,
+      [gameId, label, lastHoleAll ? 'T' : 'F', slot ?? null, format, netCut, netCut9, payIn, places, pct1, pct2, pct3, pct4, venmoUsername]
     );
     return result.insertId;
   }
@@ -259,12 +274,34 @@ export async function createTeamGame(
 
   const [result] = await pool.query<any>(
     `INSERT INTO TeamGame (GameID, Label, TeamSize, KeepCount, AssignMode, LastHoleAll, Slot, Format,
-                            NetCut, NetCut9, PayIn, Places, Pct1, Pct2, Pct3, Pct4, LastUpdateUser)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'App')`,
+                            NetCut, NetCut9, PayIn, Places, Pct1, Pct2, Pct3, Pct4, VenmoUsername, LastUpdateUser)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'App')`,
     [gameId, label, teamSize, keepCount, assignMode, lastHoleAll ? 'T' : 'F', slot ?? null, format,
-     netCut, netCut9, payIn, places, pct1, pct2, pct3, pct4]
+     netCut, netCut9, payIn, places, pct1, pct2, pct3, pct4, venmoUsername]
   );
   return result.insertId;
+}
+
+/**
+ * The Venmo username to use for Tee Times' "pay now?" prompt on a given date, when a one-off
+ * team game for that week has its own collector set (see TeamGamePayoutInput.venmoUsername) --
+ * null if there's no Game yet for this date, or no one-off game with an override. Only ever
+ * looks at one-off games (Slot IS NULL), same as their Pay In/Places/etc. -- an Options "Teams N"
+ * slot has no Venmo field of its own (it's a recurring weekly setup, not a "the admin's away this
+ * week" situation). If more than one one-off game happens to have its own override set for the
+ * same week, the first one created wins -- picking a payment recipient for the WHOLE tee-times
+ * pot from several independent per-game overrides has no obviously correct rule, and this hasn't
+ * come up in practice.
+ */
+export async function getTeeDateVenmoOverride(eventId: number, teeDate: string): Promise<string | null> {
+  const [rows] = await pool.query<any[]>(
+    `SELECT tg.VenmoUsername FROM TeamGame tg
+     INNER JOIN Game g ON g.GameID = tg.GameID
+     WHERE g.GroupID = ? AND g.GameDate = ? AND tg.Slot IS NULL AND tg.VenmoUsername IS NOT NULL
+     ORDER BY tg.TeamGameID LIMIT 1`,
+    [eventId, teeDate]
+  );
+  return rows.length > 0 ? rows[0].VenmoUsername : null;
 }
 
 /**

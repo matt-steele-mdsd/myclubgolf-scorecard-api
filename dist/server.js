@@ -1197,6 +1197,24 @@ app.post('/api/events/:id/venmo-username', async (req, res) => {
         res.status(500).json({ error: 'Failed to set Venmo username' });
     }
 });
+// A one-off team game's own Venmo override for this date, if one was set (see
+// getTeeDateVenmoOverride) -- null if none. Tee Times' "pay now" prompt prefers this over the
+// admin's own venmo-username when present.
+app.get('/api/events/:id/venmo-override', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id);
+        const teeDate = req.query.teeDate;
+        if (!teeDate) {
+            return res.status(400).json({ error: 'teeDate query param required' });
+        }
+        const venmoUsername = await (0, teamGameService_1.getTeeDateVenmoOverride)(eventId, teeDate);
+        res.json({ venmoUsername });
+    }
+    catch (error) {
+        console.error('Error fetching Venmo override:', error.message);
+        res.status(500).json({ error: 'Failed to fetch Venmo override' });
+    }
+});
 // Get an event's recorded UPS Cup winners endpoint
 app.get('/api/events/:id/ups-cup-winners', async (req, res) => {
     try {

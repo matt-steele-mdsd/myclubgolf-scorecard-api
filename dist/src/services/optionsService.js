@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.saveGameDblBogeyOverride = exports.getGameDblBogeyOverride = exports.resetGamePayoutOverrides = exports.saveGamePayoutOverrides = exports.getEffectiveGamePayoutOptions = exports.getGamePayoutOverrides = exports.PAYOUT_OVERRIDE_KEYS = exports.getVenmoUsername = exports.setVenmoUsername = exports.VENMO_USERNAME_PATTERN = exports.hasAdminPassword = exports.verifyAdminPassword = exports.setAdminPassword = exports.saveEventOptions = exports.getEventOptions = void 0;
+exports.normalizeVenmoUsername = normalizeVenmoUsername;
 const config_1 = __importDefault(require("../db/config"));
 // Default options for any event with no EventOptions rows yet — including brand-new events,
 // since createEvent doesn't write any options rows itself.
@@ -199,7 +200,9 @@ exports.VENMO_USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{4,29}$/;
  * usernames with a leading "@" (e.g. "@John-Smith-12"), so admins naturally paste/type it that
  * way even though the underlying username itself never includes it (confirmed with Matt
  * 2026-08-22). Duplicated (not imported) from src/utils/venmoUsername.ts's identical function --
- * same reason as VENMO_USERNAME_PATTERN's own duplication note below. */
+ * same reason as VENMO_USERNAME_PATTERN's own duplication note below. Exported so other
+ * server-only files (e.g. teamGameService.ts's one-off game Venmo override) can reuse it instead
+ * of duplicating it a third time -- both already live server-side, so no bundling concern. */
 function normalizeVenmoUsername(input) {
     return input.trim().replace(/^@/, '');
 }

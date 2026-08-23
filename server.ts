@@ -27,7 +27,7 @@ import {
   getTeamGameScorecard, addOrUpdateGroupTeam, skipTeamGameSlot, getTeamGameWeeks, getTeamGameCutSummary,
   getShowTeamsListing, getKeepFormatTeamsForPlayers, getTeamGameHoleKeepCounts, saveTeamGameHoleKeepCount,
   getTeamGameLiveLeaderboard, getTeamBestPossible, getBestPossibleWeeks,
-  getIrishRumbleTeamsForPlayers, getFixedKeepLiveLeaderboard, getTeeDateVenmoOverride,
+  getIrishRumbleTeamsForPlayers, getFixedKeepLiveLeaderboard,
 } from './src/services/teamGameService';
 import { upsertPlayingGroup, getPlayingGroup } from './src/services/playingGroupService';
 import { addPlayer, getUnlinkedPlayers, linkPlayers, getPlayerListForEvent, renamePlayer, assignGuestPlayer } from './src/services/playerService';
@@ -41,7 +41,7 @@ import { getPaidTrackerList, setPaidTracker, getRefundNeededList } from './src/s
 import { getGrossSkinsPaidList, setGrossSkinsPaid, hasAnyGrossSkinsPaidForGame, getGrossSkinsTrackerDates } from './src/services/grossSkinsPaidService';
 import { getGrossSkinsForHole, getGrossSkinsTotals, recalculateAllGrossSkins } from './src/services/grossSkinsService';
 import { getNaughtyList, recheckLatePosting, getGhinPlayerList, getGhinSummary, getGhinYears, searchGhinWithHistoryFallback, linkPlayerGhin, findEasyGhinLinks, setPlayerGhinSkip, getPlayerCourseHandicaps, refreshGhinIndexes, searchGhinCourses, getGhinCourseDetail } from './src/services/ghinService';
-import { getEventOptions, saveEventOptions, setAdminPassword, verifyAdminPassword, hasAdminPassword, getEffectiveGamePayoutOptions, saveGamePayoutOverrides, resetGamePayoutOverrides, getGameDblBogeyOverride, saveGameDblBogeyOverride, getVenmoUsername, setVenmoUsername } from './src/services/optionsService';
+import { getEventOptions, saveEventOptions, setAdminPassword, verifyAdminPassword, hasAdminPassword, getEffectiveGamePayoutOptions, saveGamePayoutOverrides, resetGamePayoutOverrides, getGameDblBogeyOverride, saveGameDblBogeyOverride, getVenmoUsername, setVenmoUsername, getGameVenmoOverride, saveGameVenmoOverride, getTeeDateVenmoOverride } from './src/services/optionsService';
 import { getLinkedEventIds, ensurePlayerLinkedToEvent } from './src/services/teeTimesLinkService';
 import { syncGamePayoutLedger, getSeasonPayoutSummary, getPayoutReviewForEvent, getHoleInOneCelebration, getWeekPurse } from './src/services/payoutLedgerService';
 import { submitFeedback, getFeedback, deleteFeedback, setFeedbackResolved } from './src/services/feedbackService';
@@ -1215,8 +1215,8 @@ app.post('/api/events/:id/venmo-username', async (req, res) => {
   }
 });
 
-// A one-off team game's own Venmo override for this date, if one was set (see
-// getTeeDateVenmoOverride) -- null if none. Tee Times' "pay now" prompt prefers this over the
+// This week's Venmo collector override for a given tee date, if one was set on Team Games (see
+// getTeeDateVenmoOverride) -- '' if none. Tee Times' "pay now" prompt prefers this over the
 // admin's own venmo-username when present.
 app.get('/api/events/:id/venmo-override', async (req, res) => {
   try {
@@ -1230,6 +1230,35 @@ app.get('/api/events/:id/venmo-override', async (req, res) => {
   } catch (error: any) {
     console.error('Error fetching Venmo override:', error.message);
     res.status(500).json({ error: 'Failed to fetch Venmo override' });
+  }
+});
+
+// This week's Venmo collector override, if any -- '' means "no override, use the admin's own
+// Venmo username". Set on Team Games right below Course, same per-week granularity as the Double
+// Bogey Max override -- deliberately unrelated to whether a team game is set up that week.
+app.get('/api/games/:id/venmo-override', async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.id);
+    const username = await getGameVenmoOverride(gameId);
+    res.json({ username });
+  } catch (error: any) {
+    console.error('Error fetching game Venmo override:', error.message);
+    res.status(500).json({ error: 'Failed to fetch game Venmo override' });
+  }
+});
+
+// Set (or clear, if blank) this week's Venmo collector override. 400s if the value doesn't match
+// Venmo's real username format.
+app.post('/api/games/:id/venmo-override', async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.id);
+    const { username } = req.body;
+    const ok = await saveGameVenmoOverride(gameId, username ?? '');
+    if (!ok) return res.status(400).json({ error: 'Not a valid Venmo username format' });
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error saving game Venmo override:', error.message);
+    res.status(500).json({ error: 'Failed to save game Venmo override' });
   }
 });
 

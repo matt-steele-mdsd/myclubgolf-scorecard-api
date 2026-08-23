@@ -519,3 +519,50 @@ export const saveGameDblBogeyOverride = async (gameId: number, mode: DblBogeyMod
     [gameId, mode]
   );
 };
+
+/** Reuses the same GameOptions table, under its own 'venmo_collector' key -- Matt, 2026-08-22:
+ * some weeks the admin can't be there and wants a different person (whoever's actually collecting
+ * that week's payments) to receive Tee Times' Venmo Auto-Pay prompt instead of the admin. Per
+ * WEEK, deliberately not tied to any one-off team game -- it's the same override regardless of
+ * which (if any) team game is set up that week, shown on Team Games right below Course, same
+ * granularity as the Double Bogey Max override above. Row absent/empty = fall back to the event's
+ * own admin Venmo username (getVenmoUsername). Only ever matters when Venmo Auto-Pay is already
+ * on -- this doesn't gate anything on its own. */
+export const getGameVenmoOverride = async (gameId: number): Promise<string> => {
+  const [rows]: any = await pool.query(
+    `SELECT OptionValue FROM GameOptions WHERE GameID = ? AND OptionName = 'venmo_collector'`,
+    [gameId]
+  );
+  return rows.length > 0 ? rows[0].OptionValue ?? '' : '';
+};
+
+/** Set (or, with an empty string, clear) this week's Venmo collector override. Rejects an
+ * obviously malformed value, same format check as setVenmoUsername. Clearing deletes the row
+ * entirely, reverting back to the admin's own Venmo username. */
+export const saveGameVenmoOverride = async (gameId: number, username: string): Promise<boolean> => {
+  const trimmed = normalizeVenmoUsername(username);
+  if (trimmed !== '' && !VENMO_USERNAME_PATTERN.test(trimmed)) return false;
+  if (trimmed === '') {
+    await pool.query(`DELETE FROM GameOptions WHERE GameID = ? AND OptionName = 'venmo_collector'`, [gameId]);
+    return true;
+  }
+  await pool.query(
+    `INSERT INTO GameOptions (GameID, OptionName, OptionValue, LastUpdateUser) VALUES (?, 'venmo_collector', ?, 'app')
+     ON DUPLICATE KEY UPDATE OptionValue = VALUES(OptionValue), LastUpdateDt = CURRENT_TIMESTAMP`,
+    [gameId, trimmed]
+  );
+  return true;
+};
+
+/** The effective Venmo collector override for a given TEE DATE (not GameID directly) -- resolves
+ * date -> Game -> GameOptions, for Tee Times' "pay now" prompt, which only knows the event and
+ * date, not necessarily a GameID. '' if there's no Game for that date yet, or no override set. */
+export const getTeeDateVenmoOverride = async (eventId: number, teeDate: string): Promise<string> => {
+  const [rows]: any = await pool.query(
+    `SELECT go.OptionValue FROM Game g
+     INNER JOIN GameOptions go ON go.GameID = g.GameID AND go.OptionName = 'venmo_collector'
+     WHERE g.GroupID = ? AND g.GameDate = ?`,
+    [eventId, teeDate]
+  );
+  return rows.length > 0 ? rows[0].OptionValue ?? '' : '';
+};

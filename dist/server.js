@@ -1197,8 +1197,8 @@ app.post('/api/events/:id/venmo-username', async (req, res) => {
         res.status(500).json({ error: 'Failed to set Venmo username' });
     }
 });
-// A one-off team game's own Venmo override for this date, if one was set (see
-// getTeeDateVenmoOverride) -- null if none. Tee Times' "pay now" prompt prefers this over the
+// This week's Venmo collector override for a given tee date, if one was set on Team Games (see
+// getTeeDateVenmoOverride) -- '' if none. Tee Times' "pay now" prompt prefers this over the
 // admin's own venmo-username when present.
 app.get('/api/events/:id/venmo-override', async (req, res) => {
     try {
@@ -1207,12 +1207,42 @@ app.get('/api/events/:id/venmo-override', async (req, res) => {
         if (!teeDate) {
             return res.status(400).json({ error: 'teeDate query param required' });
         }
-        const venmoUsername = await (0, teamGameService_1.getTeeDateVenmoOverride)(eventId, teeDate);
+        const venmoUsername = await (0, optionsService_1.getTeeDateVenmoOverride)(eventId, teeDate);
         res.json({ venmoUsername });
     }
     catch (error) {
         console.error('Error fetching Venmo override:', error.message);
         res.status(500).json({ error: 'Failed to fetch Venmo override' });
+    }
+});
+// This week's Venmo collector override, if any -- '' means "no override, use the admin's own
+// Venmo username". Set on Team Games right below Course, same per-week granularity as the Double
+// Bogey Max override -- deliberately unrelated to whether a team game is set up that week.
+app.get('/api/games/:id/venmo-override', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const username = await (0, optionsService_1.getGameVenmoOverride)(gameId);
+        res.json({ username });
+    }
+    catch (error) {
+        console.error('Error fetching game Venmo override:', error.message);
+        res.status(500).json({ error: 'Failed to fetch game Venmo override' });
+    }
+});
+// Set (or clear, if blank) this week's Venmo collector override. 400s if the value doesn't match
+// Venmo's real username format.
+app.post('/api/games/:id/venmo-override', async (req, res) => {
+    try {
+        const gameId = parseInt(req.params.id);
+        const { username } = req.body;
+        const ok = await (0, optionsService_1.saveGameVenmoOverride)(gameId, username ?? '');
+        if (!ok)
+            return res.status(400).json({ error: 'Not a valid Venmo username format' });
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('Error saving game Venmo override:', error.message);
+        res.status(500).json({ error: 'Failed to save game Venmo override' });
     }
 });
 // Get an event's recorded UPS Cup winners endpoint

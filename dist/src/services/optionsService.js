@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.saveGameDblBogeyOverride = exports.getGameDblBogeyOverride = exports.resetGamePayoutOverrides = exports.saveGamePayoutOverrides = exports.getEffectiveGamePayoutOptions = exports.getGamePayoutOverrides = exports.PAYOUT_OVERRIDE_KEYS = exports.getVenmoUsername = exports.setVenmoUsername = exports.VENMO_USERNAME_PATTERN = exports.hasAdminPassword = exports.verifyAdminPassword = exports.setAdminPassword = exports.saveEventOptions = exports.getEventOptions = void 0;
+exports.getTeeDateVenmoOverride = exports.saveGameVenmoOverride = exports.getGameVenmoOverride = exports.saveGameDblBogeyOverride = exports.getGameDblBogeyOverride = exports.resetGamePayoutOverrides = exports.saveGamePayoutOverrides = exports.getEffectiveGamePayoutOptions = exports.getGamePayoutOverrides = exports.PAYOUT_OVERRIDE_KEYS = exports.getVenmoUsername = exports.setVenmoUsername = exports.VENMO_USERNAME_PATTERN = exports.hasAdminPassword = exports.verifyAdminPassword = exports.setAdminPassword = exports.saveEventOptions = exports.getEventOptions = void 0;
 exports.normalizeVenmoUsername = normalizeVenmoUsername;
 const config_1 = __importDefault(require("../db/config"));
 // Default options for any event with no EventOptions rows yet — including brand-new events,
@@ -328,3 +328,42 @@ const saveGameDblBogeyOverride = async (gameId, mode) => {
      ON DUPLICATE KEY UPDATE OptionValue = VALUES(OptionValue), LastUpdateDt = CURRENT_TIMESTAMP`, [gameId, mode]);
 };
 exports.saveGameDblBogeyOverride = saveGameDblBogeyOverride;
+/** Reuses the same GameOptions table, under its own 'venmo_collector' key -- Matt, 2026-08-22:
+ * some weeks the admin can't be there and wants a different person (whoever's actually collecting
+ * that week's payments) to receive Tee Times' Venmo Auto-Pay prompt instead of the admin. Per
+ * WEEK, deliberately not tied to any one-off team game -- it's the same override regardless of
+ * which (if any) team game is set up that week, shown on Team Games right below Course, same
+ * granularity as the Double Bogey Max override above. Row absent/empty = fall back to the event's
+ * own admin Venmo username (getVenmoUsername). Only ever matters when Venmo Auto-Pay is already
+ * on -- this doesn't gate anything on its own. */
+const getGameVenmoOverride = async (gameId) => {
+    const [rows] = await config_1.default.query(`SELECT OptionValue FROM GameOptions WHERE GameID = ? AND OptionName = 'venmo_collector'`, [gameId]);
+    return rows.length > 0 ? rows[0].OptionValue ?? '' : '';
+};
+exports.getGameVenmoOverride = getGameVenmoOverride;
+/** Set (or, with an empty string, clear) this week's Venmo collector override. Rejects an
+ * obviously malformed value, same format check as setVenmoUsername. Clearing deletes the row
+ * entirely, reverting back to the admin's own Venmo username. */
+const saveGameVenmoOverride = async (gameId, username) => {
+    const trimmed = normalizeVenmoUsername(username);
+    if (trimmed !== '' && !exports.VENMO_USERNAME_PATTERN.test(trimmed))
+        return false;
+    if (trimmed === '') {
+        await config_1.default.query(`DELETE FROM GameOptions WHERE GameID = ? AND OptionName = 'venmo_collector'`, [gameId]);
+        return true;
+    }
+    await config_1.default.query(`INSERT INTO GameOptions (GameID, OptionName, OptionValue, LastUpdateUser) VALUES (?, 'venmo_collector', ?, 'app')
+     ON DUPLICATE KEY UPDATE OptionValue = VALUES(OptionValue), LastUpdateDt = CURRENT_TIMESTAMP`, [gameId, trimmed]);
+    return true;
+};
+exports.saveGameVenmoOverride = saveGameVenmoOverride;
+/** The effective Venmo collector override for a given TEE DATE (not GameID directly) -- resolves
+ * date -> Game -> GameOptions, for Tee Times' "pay now" prompt, which only knows the event and
+ * date, not necessarily a GameID. '' if there's no Game for that date yet, or no override set. */
+const getTeeDateVenmoOverride = async (eventId, teeDate) => {
+    const [rows] = await config_1.default.query(`SELECT go.OptionValue FROM Game g
+     INNER JOIN GameOptions go ON go.GameID = g.GameID AND go.OptionName = 'venmo_collector'
+     WHERE g.GroupID = ? AND g.GameDate = ?`, [eventId, teeDate]);
+    return rows.length > 0 ? rows[0].OptionValue ?? '' : '';
+};
+exports.getTeeDateVenmoOverride = getTeeDateVenmoOverride;

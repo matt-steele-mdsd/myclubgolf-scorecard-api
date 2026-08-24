@@ -86,8 +86,17 @@ async function getGrossSkinsTotals(gameId) {
     if (gameRows.length === 0)
         return { perSkin: 0, rows: [] };
     const { GroupID: groupId, GameDate: gameDate } = gameRows[0];
-    const [countRows] = await config_1.default.query(`SELECT (SELECT COUNT(*) FROM GSkinsPaid WHERE GroupID = ? AND TeeDate = ?) AS numPaid,
-            (SELECT COUNT(*) FROM GrossSkinsResult WHERE GameID = ? AND Validated = 'T') AS numSkins`, [groupId, gameDate, gameId]);
+    const [countRows] = await config_1.default.query(
+    // numPaid requires an actual Score row for THIS game, not just a GSkinsPaid row -- a player
+    // who paid then marked Out (or was otherwise removed) still has their GSkinsPaid row sitting
+    // around (nothing clears it automatically), but they didn't actually play, so they shouldn't
+    // count toward the pot split. Mirrors how the regular Skins/hole-in-one pot counts (Score
+    // JOIN, not just OptOut/registration) -- confirmed real, Matt 2026-08-23: Cron Sunday showed
+    // 11 paid when only 9 people actually played.
+    `SELECT (SELECT COUNT(DISTINCT gp.PlayerID) FROM GSkinsPaid gp
+             INNER JOIN Score s ON s.PlayerID = gp.PlayerID AND s.GameID = ?
+             WHERE gp.GroupID = ? AND gp.TeeDate = ?) AS numPaid,
+            (SELECT COUNT(*) FROM GrossSkinsResult WHERE GameID = ? AND Validated = 'T') AS numSkins`, [gameId, groupId, gameDate, gameId]);
     const options = await (0, optionsService_1.getEventOptions)(groupId);
     const payIn = options?.gross_skins_payin ? Number(options.gross_skins_payin) : 0;
     const numPaid = countRows[0].numPaid;

@@ -308,9 +308,13 @@ async function syncGrossSkinsPayout(gameId: number, groupId: number, gameDate: D
     return;
   }
   const [countRows] = await pool.query<any[]>(
-    `SELECT (SELECT COUNT(*) FROM GSkinsPaid WHERE GroupID = ? AND TeeDate = ?) AS numPaid,
+    // Requires an actual Score row for THIS game -- see grossSkinsService.ts's getGrossSkinsTotals
+    // for why a raw GSkinsPaid count alone can overstate the field (Matt, 2026-08-23).
+    `SELECT (SELECT COUNT(DISTINCT gp.PlayerID) FROM GSkinsPaid gp
+             INNER JOIN Score s ON s.PlayerID = gp.PlayerID AND s.GameID = ?
+             WHERE gp.GroupID = ? AND gp.TeeDate = ?) AS numPaid,
             (SELECT COUNT(*) FROM GrossSkinsResult WHERE GameID = ? AND Validated = 'T') AS numSkins`,
-    [groupId, gameDate, gameId]
+    [gameId, groupId, gameDate, gameId]
   );
   const payIn = Number(eventOptions.gross_skins_payin) || 0;
   const numPaid = countRows[0]?.numPaid ?? 0;
@@ -397,9 +401,13 @@ async function computeTotalDayPot(gameId: number, eventOptions: Record<string, a
   if (eventOptions.gross_skins_enabled && grossSkinsPayIn > 0) {
     const [gameRows] = await pool.query<any[]>('SELECT GroupID, GameDate FROM Game WHERE GameID = ?', [gameId]);
     if (gameRows.length > 0) {
+      // Requires an actual Score row for THIS game -- see grossSkinsService.ts's
+      // getGrossSkinsTotals for why a raw GSkinsPaid count alone can overstate the field.
       const [countRows] = await pool.query<any[]>(
-        'SELECT COUNT(*) AS numPaid FROM GSkinsPaid WHERE GroupID = ? AND TeeDate = ?',
-        [gameRows[0].GroupID, gameRows[0].GameDate]
+        `SELECT COUNT(DISTINCT gp.PlayerID) AS numPaid FROM GSkinsPaid gp
+         INNER JOIN Score s ON s.PlayerID = gp.PlayerID AND s.GameID = ?
+         WHERE gp.GroupID = ? AND gp.TeeDate = ?`,
+        [gameId, gameRows[0].GroupID, gameRows[0].GameDate]
       );
       total += grossSkinsPayIn * (countRows[0]?.numPaid ?? 0);
     }

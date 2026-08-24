@@ -264,8 +264,13 @@ async function syncGrossSkinsPayout(gameId, groupId, gameDate, eventOptions) {
         await syncOnePayoutType(gameId, 'grossskins', new Map());
         return;
     }
-    const [countRows] = await config_1.default.query(`SELECT (SELECT COUNT(*) FROM GSkinsPaid WHERE GroupID = ? AND TeeDate = ?) AS numPaid,
-            (SELECT COUNT(*) FROM GrossSkinsResult WHERE GameID = ? AND Validated = 'T') AS numSkins`, [groupId, gameDate, gameId]);
+    const [countRows] = await config_1.default.query(
+    // Requires an actual Score row for THIS game -- see grossSkinsService.ts's getGrossSkinsTotals
+    // for why a raw GSkinsPaid count alone can overstate the field (Matt, 2026-08-23).
+    `SELECT (SELECT COUNT(DISTINCT gp.PlayerID) FROM GSkinsPaid gp
+             INNER JOIN Score s ON s.PlayerID = gp.PlayerID AND s.GameID = ?
+             WHERE gp.GroupID = ? AND gp.TeeDate = ?) AS numPaid,
+            (SELECT COUNT(*) FROM GrossSkinsResult WHERE GameID = ? AND Validated = 'T') AS numSkins`, [gameId, groupId, gameDate, gameId]);
     const payIn = Number(eventOptions.gross_skins_payin) || 0;
     const numPaid = countRows[0]?.numPaid ?? 0;
     const numSkins = countRows[0]?.numSkins ?? 0;
@@ -321,7 +326,11 @@ async function computeTotalDayPot(gameId, eventOptions) {
     if (eventOptions.gross_skins_enabled && grossSkinsPayIn > 0) {
         const [gameRows] = await config_1.default.query('SELECT GroupID, GameDate FROM Game WHERE GameID = ?', [gameId]);
         if (gameRows.length > 0) {
-            const [countRows] = await config_1.default.query('SELECT COUNT(*) AS numPaid FROM GSkinsPaid WHERE GroupID = ? AND TeeDate = ?', [gameRows[0].GroupID, gameRows[0].GameDate]);
+            // Requires an actual Score row for THIS game -- see grossSkinsService.ts's
+            // getGrossSkinsTotals for why a raw GSkinsPaid count alone can overstate the field.
+            const [countRows] = await config_1.default.query(`SELECT COUNT(DISTINCT gp.PlayerID) AS numPaid FROM GSkinsPaid gp
+         INNER JOIN Score s ON s.PlayerID = gp.PlayerID AND s.GameID = ?
+         WHERE gp.GroupID = ? AND gp.TeeDate = ?`, [gameId, gameRows[0].GroupID, gameRows[0].GameDate]);
             total += grossSkinsPayIn * (countRows[0]?.numPaid ?? 0);
         }
     }

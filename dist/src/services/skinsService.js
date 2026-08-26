@@ -379,7 +379,7 @@ async function getSkinsTotals(gameId) {
     const numPlayers = countRows[0].numPlayers;
     const numSkins = countRows[0].numSkins;
     const perSkin = numSkins > 0 ? (numPlayers * payIn) / numSkins : 0;
-    const [rows] = await config_1.default.query(`SELECT p.PlayerID, p.LastName, p.FirstName, sk.HoleID, sk.Validated
+    const [rows] = await config_1.default.query(`SELECT p.PlayerID, p.LastName, p.FirstName, sk.HoleID, sk.Validated, sk.NetScore
      FROM Skins sk
      INNER JOIN Player p ON p.PlayerID = sk.PlayerID
      WHERE sk.GameID = ?
@@ -393,7 +393,7 @@ async function getSkinsTotals(gameId) {
         }
         const row = byPlayer.get(name);
         const validated = r.Validated === 'T';
-        row.holes.push({ holeId: r.HoleID, validated });
+        row.holes.push({ holeId: r.HoleID, validated, netScore: Number(r.NetScore) });
         if (validated)
             row.skins += 1;
     }

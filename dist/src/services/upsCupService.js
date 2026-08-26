@@ -165,52 +165,26 @@ async function getMajorWinners(eventId, year) {
     return results;
 }
 /**
- * Find players mathematically eliminated from UPS Cup qualification this year, two ways:
+ * Find players mathematically eliminated from UPS Cup qualification this year: can't crack
+ * "Number of Players That Make the UPS Cup" (Options screen) even in the best case -- even if
+ * they won every remaining qualifying event outright (1 point each week, the best possible UPS
+ * Points score), their resulting average still wouldn't beat today's cutoff for the last
+ * qualifying spot among paid players. (Previously also flagged anyone who couldn't reach
+ * "Minimum Number of Events to Qualify" even by playing every remaining event -- dropped, Matt
+ * 2026-08-23: "I also do not want to see the not enough events because who cares.")
  *
- *  - Can't reach "Minimum Number of Events to Qualify" (Options screen) — even if they played
- *    every remaining qualifying event this year, they still wouldn't hit the minimum.
- *  - Can't crack "Number of Players That Make the UPS Cup" (Options screen) even in the best
- *    case — even if they won every remaining qualifying event outright (1 point each week,
- *    the best possible UPS Points score), their resulting average still wouldn't beat today's
- *    cutoff for the last qualifying spot among paid players. Only checked for paid players,
- *    since only paid players are eligible for a spot at all (see "UPS Cup Paid Players");
- *    skipped for anyone already flagged by the first check, since they're a lost cause for an
- *    even more basic reason.
+ * The cutoff itself is still computed from PAID players only (that's the real qualifying
+ * threshold, unaffected by anyone's own paid status) -- but every player's best-case average is
+ * now checked against it and returned with its own `paid` flag, not just paid players', so the
+ * caller can show/hide unpaid players via its own toggle instead of this function silently
+ * deciding for it.
  *
- * Only 'event'/'major' calendar days count as qualifying events; 'upscup' days (the UPS Cup
- * itself) and 'note' days don't. A day counts as "played" only once it's actually happened
- * (mirrors cleanupService's `GameDate < CURDATE()` convention) and the player has a recorded
- * score for it; "remaining" is every qualifying day from today onward, played or not, since
- * it's still a future opportunity.
+ * Only 'event'/'major' calendar days count as qualifying events; "remaining" is every qualifying
+ * day from today onward, played or not, since it's still a future opportunity to improve.
  */
 async function getIneligiblePlayers(eventId, year) {
-    const { playedCount, remaining, minEvents } = await getQualifyingPlayedCounts(eventId, year);
+    const { remaining } = await getQualifyingPlayedCounts(eventId, year);
     const ineligible = [];
-    const alreadyFlagged = new Set();
-    if (minEvents > 0) {
-        const [playerRows] = await config_1.default.query(`SELECT p.PlayerID AS id, CONCAT(p.LastName, ', ', p.FirstName) AS name
-       FROM Player p
-       WHERE p.PlayerID IN (SELECT PlayerID FROM EventPlayers WHERE EventID = ?)`, [eventId]);
-        for (const player of playerRows) {
-            const played = playedCount.get(player.id) || 0;
-            // Skip anyone who hasn't played a single qualifying event yet -- of course they "can't
-            // qualify" in that trivial sense, but that's not a meaningful elimination the way it is
-            // for someone who tried and ran out of remaining events; it's just noise from every
-            // never-showed-up roster member (confirmed with Matt 2026-08-22).
-            if (played === 0)
-                continue;
-            if (played + remaining < minEvents) {
-                ineligible.push({
-                    playerId: player.id,
-                    name: player.name,
-                    played,
-                    remaining,
-                    reason: `Not enough events remaining to meet minimum requirement (played ${played}, ${remaining} remaining, need ${minEvents})`,
-                });
-                alreadyFlagged.add(player.id);
-            }
-        }
-    }
     const { pointsByPlayer, paidSet, numScores, numPlayers } = await getStandingsRawData(eventId, year);
     if (numScores > 0 && numPlayers > 0) {
         const paidAverages = [];
@@ -223,8 +197,6 @@ async function getIneligiblePlayers(eventId, year) {
         if (paidAverages.length > 0) {
             const cutoffAverage = paidAverages[Math.min(numPlayers, paidAverages.length) - 1];
             for (const [playerId, { name, points }] of pointsByPlayer) {
-                if (!paidSet.has(playerId) || alreadyFlagged.has(playerId))
-                    continue;
                 const bestCasePoints = [...points, ...Array(remaining).fill(1)].sort((a, b) => a - b);
                 const bestCaseAverage = averageOf(bestCasePoints, numScores);
                 if (bestCaseAverage > cutoffAverage) {
@@ -234,6 +206,7 @@ async function getIneligiblePlayers(eventId, year) {
                         played: points.length,
                         remaining,
                         reason: `Cannot mathematically reach the top ${numPlayers} qualifying spots (best possible average ${bestCaseAverage.toFixed(2)}, current cutoff ${cutoffAverage.toFixed(2)})`,
+                        paid: paidSet.has(playerId),
                     });
                 }
             }

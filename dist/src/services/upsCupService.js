@@ -165,27 +165,63 @@ async function getMajorWinners(eventId, year) {
     return results;
 }
 /**
- * Find players mathematically eliminated from UPS Cup qualification this year: can't crack
- * "Number of Players That Make the UPS Cup" (Options screen) even in the best case -- even if
- * they won every remaining qualifying event outright (1 point each week, the best possible UPS
- * Points score), their resulting average still wouldn't beat today's cutoff for the last
- * qualifying spot among paid players. (Previously also flagged anyone who couldn't reach
- * "Minimum Number of Events to Qualify" even by playing every remaining event -- dropped, Matt
- * 2026-08-23: "I also do not want to see the not enough events because who cares.")
+ * Find players mathematically eliminated from UPS Cup qualification this year, two ways:
  *
- * The cutoff itself is still computed from PAID players only (that's the real qualifying
- * threshold, unaffected by anyone's own paid status) -- but every player's best-case average is
- * now checked against it and returned with its own `paid` flag, not just paid players', so the
- * caller can show/hide unpaid players via its own toggle instead of this function silently
- * deciding for it.
+ *  - Can't reach "Minimum Number of Events to Qualify" (Options screen) even by playing every
+ *    remaining qualifying event -- a genuinely different failure than the average-based check
+ *    below, and NOT a subset of it: a player who won their only 4 rounds played (average 1.0,
+ *    mathematically unbeatable) with only 4 qualifying events left can still be dead in the
+ *    water on event count alone if the minimum is, say, 9 -- the average check would never flag
+ *    them since their best-case average trivially beats any cutoff (confirmed with Matt
+ *    2026-08-26, after an earlier pass wrongly dropped this check entirely).
+ *  - Can't crack "Number of Players That Make the UPS Cup" (Options screen) even in the best
+ *    case -- even if they won every remaining qualifying event outright (1 point each week, the
+ *    best possible UPS Points score), their resulting average still wouldn't beat today's cutoff
+ *    for the last qualifying spot among paid players. Skipped for anyone already flagged by the
+ *    first check, since they're a lost cause for an even more basic reason.
  *
- * Only 'event'/'major' calendar days count as qualifying events; "remaining" is every qualifying
- * day from today onward, played or not, since it's still a future opportunity to improve.
+ * The top-N cutoff itself is still computed from PAID players only (that's the real qualifying
+ * threshold) -- but every flagged player, either check, paid or not, comes back with its own
+ * `paid` field so the caller can show/hide unpaid players via its own toggle instead of this
+ * function silently deciding for it (Matt, 2026-08-23: "make both not include [unpaid] players
+ * unless [show unpaid] checkbox is checked").
+ *
+ * Only 'event'/'major' calendar days count as qualifying events; 'upscup' days (the UPS Cup
+ * itself) and 'note' days don't. A day counts as "played" only once it's actually happened
+ * (mirrors cleanupService's `GameDate < CURDATE()` convention) and the player has a recorded
+ * score for it; "remaining" is every qualifying day from today onward, played or not, since
+ * it's still a future opportunity.
  */
 async function getIneligiblePlayers(eventId, year) {
-    const { remaining } = await getQualifyingPlayedCounts(eventId, year);
-    const ineligible = [];
+    const { playedCount, remaining, minEvents } = await getQualifyingPlayedCounts(eventId, year);
     const { pointsByPlayer, paidSet, numScores, numPlayers } = await getStandingsRawData(eventId, year);
+    const ineligible = [];
+    const alreadyFlagged = new Set();
+    if (minEvents > 0) {
+        const [playerRows] = await config_1.default.query(`SELECT p.PlayerID AS id, CONCAT(p.LastName, ', ', p.FirstName) AS name
+       FROM Player p
+       WHERE p.PlayerID IN (SELECT PlayerID FROM EventPlayers WHERE EventID = ?)`, [eventId]);
+        for (const player of playerRows) {
+            const played = playedCount.get(player.id) || 0;
+            // Skip anyone who hasn't played a single qualifying event yet -- of course they "can't
+            // qualify" in that trivial sense, but that's not a meaningful elimination the way it is
+            // for someone who tried and ran out of remaining events; it's just noise from every
+            // never-showed-up roster member (confirmed with Matt 2026-08-22).
+            if (played === 0)
+                continue;
+            if (played + remaining < minEvents) {
+                ineligible.push({
+                    playerId: player.id,
+                    name: player.name,
+                    played,
+                    remaining,
+                    reason: `Not enough events remaining to meet minimum requirement (played ${played}, ${remaining} remaining, need ${minEvents})`,
+                    paid: paidSet.has(player.id),
+                });
+                alreadyFlagged.add(player.id);
+            }
+        }
+    }
     if (numScores > 0 && numPlayers > 0) {
         const paidAverages = [];
         for (const [playerId, { points }] of pointsByPlayer) {
@@ -197,6 +233,8 @@ async function getIneligiblePlayers(eventId, year) {
         if (paidAverages.length > 0) {
             const cutoffAverage = paidAverages[Math.min(numPlayers, paidAverages.length) - 1];
             for (const [playerId, { name, points }] of pointsByPlayer) {
+                if (alreadyFlagged.has(playerId))
+                    continue;
                 const bestCasePoints = [...points, ...Array(remaining).fill(1)].sort((a, b) => a - b);
                 const bestCaseAverage = averageOf(bestCasePoints, numScores);
                 if (bestCaseAverage > cutoffAverage) {

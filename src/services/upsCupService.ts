@@ -492,3 +492,49 @@ export async function setPlayerPaid(eventId: number, year: number, playerId: num
 export async function removePlayerPaid(eventId: number, year: number, playerId: number): Promise<void> {
   await pool.query('DELETE FROM UpsCupPaid WHERE EventID = ? AND Year = ? AND PlayerID = ?', [eventId, year, playerId]);
 }
+
+/** One qualifying date's UPS Cup result for a single player — the "UPS Cup Players" screen's
+ * per-player drill-down (app/upscupplayers.tsx). */
+export interface PlayerUpsCupRound {
+  date: string; // yyyy-mm-dd
+  /** This game's UPS Points for the player -- see getUpsPointsForGame: standard competition
+   * ("1224") ranking by net score, so this doubles as their finishing place in that day's field. */
+  points: number;
+  /** Whether this specific round is one of the lowest "Number of Scores Taken Into
+   * Consideration" (Options) results -- i.e. one of the ones actually averaged into their
+   * current standing, same selection getCurrentStandings/averageOf makes. Ties in `points`
+   * across rounds are broken by earliest date first, purely for a stable, deterministic
+   * highlight -- which specific tied round gets picked doesn't change the average itself. */
+  counting: boolean;
+}
+
+/**
+ * Every qualifying ('event'/'major') round a player has a recorded UPS Cup result for this
+ * year, in date order, with the rounds that actually count toward their current average flagged.
+ * Only includes dates the player actually has a score for (mirrors getUpsPointsForGame's own
+ * OptOut exclusion) -- a qualifying date they simply didn't play just doesn't appear, same as it
+ * doesn't contribute a points value to their standings average either.
+ */
+export async function getPlayerUpsCupRounds(eventId: number, playerId: number, year: number): Promise<PlayerUpsCupRound[]> {
+  const options = await getEventOptions(eventId);
+  const numScores = parseInt(options.ups_numscores, 10) || 0;
+
+  const qualifyingDates = await getQualifyingDates(eventId, year);
+  const rounds: { date: string; points: number }[] = [];
+  for (const date of qualifyingDates) {
+    const [games] = await pool.query<any[]>('SELECT GameID FROM Game WHERE GroupID = ? AND GameDate = ?', [eventId, date]);
+    if (games.length === 0) continue;
+    const gamePoints = await getUpsPointsForGame(games[0].GameID);
+    const mine = gamePoints.find((p) => p.playerId === playerId);
+    if (mine) rounds.push({ date, points: mine.points });
+  }
+
+  const countingIndices = new Set(
+    rounds
+      .map((_, i) => i)
+      .sort((a, b) => rounds[a].points - rounds[b].points || rounds[a].date.localeCompare(rounds[b].date))
+      .slice(0, numScores > 0 ? numScores : rounds.length)
+  );
+
+  return rounds.map((r, i) => ({ ...r, counting: countingIndices.has(i) }));
+}

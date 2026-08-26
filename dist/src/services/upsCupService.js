@@ -13,6 +13,7 @@ exports.getCurrentStandings = getCurrentStandings;
 exports.getPaidPlayers = getPaidPlayers;
 exports.setPlayerPaid = setPlayerPaid;
 exports.removePlayerPaid = removePlayerPaid;
+exports.getPlayerUpsCupRounds = getPlayerUpsCupRounds;
 const config_1 = __importDefault(require("../db/config"));
 const optionsService_1 = require("./optionsService");
 const calendarService_1 = require("./calendarService");
@@ -349,4 +350,31 @@ async function setPlayerPaid(eventId, year, playerId) {
 }
 async function removePlayerPaid(eventId, year, playerId) {
     await config_1.default.query('DELETE FROM UpsCupPaid WHERE EventID = ? AND Year = ? AND PlayerID = ?', [eventId, year, playerId]);
+}
+/**
+ * Every qualifying ('event'/'major') round a player has a recorded UPS Cup result for this
+ * year, in date order, with the rounds that actually count toward their current average flagged.
+ * Only includes dates the player actually has a score for (mirrors getUpsPointsForGame's own
+ * OptOut exclusion) -- a qualifying date they simply didn't play just doesn't appear, same as it
+ * doesn't contribute a points value to their standings average either.
+ */
+async function getPlayerUpsCupRounds(eventId, playerId, year) {
+    const options = await (0, optionsService_1.getEventOptions)(eventId);
+    const numScores = parseInt(options.ups_numscores, 10) || 0;
+    const qualifyingDates = await (0, calendarService_1.getQualifyingDates)(eventId, year);
+    const rounds = [];
+    for (const date of qualifyingDates) {
+        const [games] = await config_1.default.query('SELECT GameID FROM Game WHERE GroupID = ? AND GameDate = ?', [eventId, date]);
+        if (games.length === 0)
+            continue;
+        const gamePoints = await getUpsPointsForGame(games[0].GameID);
+        const mine = gamePoints.find((p) => p.playerId === playerId);
+        if (mine)
+            rounds.push({ date, points: mine.points });
+    }
+    const countingIndices = new Set(rounds
+        .map((_, i) => i)
+        .sort((a, b) => rounds[a].points - rounds[b].points || rounds[a].date.localeCompare(rounds[b].date))
+        .slice(0, numScores > 0 ? numScores : rounds.length));
+    return rounds.map((r, i) => ({ ...r, counting: countingIndices.has(i) }));
 }

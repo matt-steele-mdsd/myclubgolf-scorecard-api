@@ -45,7 +45,7 @@ import { getEventOptions, saveEventOptions, setAdminPassword, verifyAdminPasswor
 import { getLinkedEventIds, ensurePlayerLinkedToEvent } from './src/services/teeTimesLinkService';
 import { syncGamePayoutLedger, getSeasonPayoutSummary, getPayoutReviewForEvent, getHoleInOneCelebration, getWeekPurse } from './src/services/payoutLedgerService';
 import { submitFeedback, getFeedback, deleteFeedback, setFeedbackResolved } from './src/services/feedbackService';
-import { getUpsCupWinners, setUpsCupWinner, deleteUpsCupWinner, getMajorWinners, getUpsPointsForGame, getIneligiblePlayers, getCurrentStandings, getPaidPlayers, setPlayerPaid, removePlayerPaid } from './src/services/upsCupService';
+import { getUpsCupWinners, setUpsCupWinner, deleteUpsCupWinner, getMajorWinners, getUpsPointsForGame, getIneligiblePlayers, getCurrentStandings, getPaidPlayers, setPlayerPaid, removePlayerPaid, getPlayerUpsCupRounds } from './src/services/upsCupService';
 import { getBirdieLeaderboard, getPlayerBirdieStatus, getHoleBirdieDetail } from './src/services/birdieRaceService';
 import { getCalendarForYear, setCalendarDay, deleteCalendarDay } from './src/services/calendarService';
 import { getCourseHoleHistory } from './src/services/courseHistoryService';
@@ -1351,6 +1351,24 @@ app.get('/api/events/:id/ups-standings', async (req, res) => {
   } catch (error: any) {
     console.error('Error fetching UPS Cup standings:', error.message);
     res.status(500).json({ error: 'Failed to fetch UPS Cup standings' });
+  }
+});
+
+// Get one player's UPS Cup rounds (date + finishing place + which ones count toward their
+// average) for a given year -- the "UPS Cup Players" screen's per-player drill-down.
+app.get('/api/events/:id/ups-player-rounds', async (req, res) => {
+  try {
+    const eventId = parseInt(req.params.id);
+    const playerId = parseInt(req.query.playerId as string);
+    const year = parseInt(req.query.year as string) || new Date().getFullYear();
+    if (!playerId) {
+      return res.status(400).json({ error: 'playerId query param required' });
+    }
+    const rounds = await getPlayerUpsCupRounds(eventId, playerId, year);
+    res.json(rounds);
+  } catch (error: any) {
+    console.error('Error fetching player UPS Cup rounds:', error.message);
+    res.status(500).json({ error: 'Failed to fetch player UPS Cup rounds' });
   }
 });
 

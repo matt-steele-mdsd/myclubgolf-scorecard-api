@@ -1337,6 +1337,24 @@ app.get('/api/events/:id/ups-standings', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch UPS Cup standings' });
     }
 });
+// Get one player's UPS Cup rounds (date + finishing place + which ones count toward their
+// average) for a given year -- the "UPS Cup Players" screen's per-player drill-down.
+app.get('/api/events/:id/ups-player-rounds', async (req, res) => {
+    try {
+        const eventId = parseInt(req.params.id);
+        const playerId = parseInt(req.query.playerId);
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+        if (!playerId) {
+            return res.status(400).json({ error: 'playerId query param required' });
+        }
+        const rounds = await (0, upsCupService_1.getPlayerUpsCupRounds)(eventId, playerId, year);
+        res.json(rounds);
+    }
+    catch (error) {
+        console.error('Error fetching player UPS Cup rounds:', error.message);
+        res.status(500).json({ error: 'Failed to fetch player UPS Cup rounds' });
+    }
+});
 // Get players who've paid their UPS Cup entry for a given year endpoint
 app.get('/api/events/:id/ups-paid-players', async (req, res) => {
     try {

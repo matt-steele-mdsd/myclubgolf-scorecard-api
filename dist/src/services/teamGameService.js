@@ -62,7 +62,7 @@ async function getTeamGameWeeks(eventId) {
     const [gameRows] = await config_1.default.query(`SELECT DISTINCT g.GameID, g.GameDate, g.CourseID, c.CourseName
      FROM Game g INNER JOIN Course c ON c.CourseID = g.CourseID
      WHERE g.GroupID = ?`, [eventId]);
-    const [calRows] = await config_1.default.query(`SELECT EventDate FROM EventCalendar WHERE EventID = ? AND DayType = 'event'`, [eventId]);
+    const [calRows] = await config_1.default.query(`SELECT EventDate FROM EventCalendar WHERE EventID = ? AND DayType IN ('event', 'major')`, [eventId]);
     const [defaultCourseRows] = await config_1.default.query(`SELECT g.CourseID, c.CourseName FROM Game g INNER JOIN Course c ON c.CourseID = g.CourseID
      WHERE g.GroupID = ? ORDER BY g.GameDate DESC LIMIT 1`, [eventId]);
     const defaultCourseId = defaultCourseRows[0]?.CourseID ?? 0;

@@ -59,7 +59,7 @@ export async function getTeamGameWeeks(eventId: number): Promise<TeamGameWeek[]>
     [eventId]
   );
   const [calRows] = await pool.query<any[]>(
-    `SELECT EventDate FROM EventCalendar WHERE EventID = ? AND DayType = 'event'`,
+    `SELECT EventDate FROM EventCalendar WHERE EventID = ? AND DayType IN ('event', 'major')`,
     [eventId]
   );
   const [defaultCourseRows] = await pool.query<any[]>(

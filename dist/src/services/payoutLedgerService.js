@@ -15,6 +15,7 @@ const money_1 = require("../utils/money");
 const weekResultsService_1 = require("./weekResultsService");
 const optionsService_1 = require("./optionsService");
 const randomTeamsService_1 = require("./randomTeamsService");
+const teamGameService_1 = require("./teamGameService");
 const TEAM_SLOTS = [
     { prefix: 'teams', slot: 1 },
     { prefix: 'teams2', slot: 2 },
@@ -87,30 +88,15 @@ async function syncOneTeamSlotPayout(gameId, prefix, slot, eventOptions, payoutV
             rosterByTeam.set(r.TeamNumber, []);
         rosterByTeam.get(r.TeamNumber).push(r.PlayerID);
     }
-    // Best-ball net front+back per team -- same shape as teamService.ts's getTeamResults query.
-    const [totalsRows] = await config_1.default.query(`SELECT allTeams.TeamNumber,
-            IFNULL(f.TeamNetFront, 0) + IFNULL(b.TeamNetBack, 0) AS total
-     FROM (SELECT DISTINCT TeamNumber FROM TeamGamePlayer WHERE TeamGameID = ?) allTeams
-     LEFT OUTER JOIN (
-       SELECT t1.TeamNumber, SUM(t1.HoleNet) AS TeamNetFront
-       FROM (
-         SELECT t.TeamNumber, s.HoleID, MIN(s.NetScore) AS HoleNet
-         FROM TeamGamePlayer t
-         INNER JOIN Score s ON s.GameID = ? AND s.PlayerID = t.PlayerID AND s.HoleID < 10
-         WHERE t.TeamGameID = ?
-         GROUP BY t.TeamNumber, s.HoleID
-       ) t1 GROUP BY t1.TeamNumber
-     ) f ON f.TeamNumber = allTeams.TeamNumber
-     LEFT OUTER JOIN (
-       SELECT t2.TeamNumber, SUM(t2.HoleNet) AS TeamNetBack
-       FROM (
-         SELECT t.TeamNumber, s.HoleID, MIN(s.NetScore) AS HoleNet
-         FROM TeamGamePlayer t
-         INNER JOIN Score s ON s.GameID = ? AND s.PlayerID = t.PlayerID AND s.HoleID > 9
-         WHERE t.TeamGameID = ?
-         GROUP BY t.TeamNumber, s.HoleID
-       ) t2 GROUP BY t2.TeamNumber
-     ) b ON b.TeamNumber = allTeams.TeamNumber`, [teamGameId, gameId, teamGameId, gameId, teamGameId]);
+    // Reuses the exact same per-hole keep-count logic the live Teams display uses (custom KeepCount,
+    // 36/48's live picker, Irish Rumble, Tommy Davis 18th-hole) instead of re-deriving team totals
+    // with a separate query -- this used to hardcode best-ball (MIN per hole, i.e. keep 1 of the
+    // team), which only happens to be right when KeepCount is 1. Confirmed real 2026-09-12: a
+    // 2-person "Teams 1" game with KeepCount=2 (both partners' net scores count every hole, not just
+    // the lower one) paid the actual 3rd-place team the winning amount and shorted the real winners
+    // -- the payout ranking and the on-screen standings had quietly drifted onto two different
+    // formulas. getTeamGameResults is the single source of truth for "what did this team score."
+    const totalsRows = (await (0, teamGameService_1.getTeamGameResults)(teamGameId)).map((r) => ({ TeamNumber: r.teamId, total: r.total }));
     // Pot size is based on everyone who actually played this format that day, not just who made
     // the drawn team roster -- a random-assignment team game excludes anyone over the Net Score to
     // Make Cut line from the roster entirely (see createRandomTeamGameTeams), but the $X buy-in
@@ -171,30 +157,9 @@ async function syncOneOffTeamGamePayout(gameId, teamGameId) {
             rosterByTeam.set(r.TeamNumber, []);
         rosterByTeam.get(r.TeamNumber).push(r.PlayerID);
     }
-    // Same best-ball net front+back per team query as syncOneTeamSlotPayout.
-    const [totalsRows] = await config_1.default.query(`SELECT allTeams.TeamNumber,
-            IFNULL(f.TeamNetFront, 0) + IFNULL(b.TeamNetBack, 0) AS total
-     FROM (SELECT DISTINCT TeamNumber FROM TeamGamePlayer WHERE TeamGameID = ?) allTeams
-     LEFT OUTER JOIN (
-       SELECT t1.TeamNumber, SUM(t1.HoleNet) AS TeamNetFront
-       FROM (
-         SELECT t.TeamNumber, s.HoleID, MIN(s.NetScore) AS HoleNet
-         FROM TeamGamePlayer t
-         INNER JOIN Score s ON s.GameID = ? AND s.PlayerID = t.PlayerID AND s.HoleID < 10
-         WHERE t.TeamGameID = ?
-         GROUP BY t.TeamNumber, s.HoleID
-       ) t1 GROUP BY t1.TeamNumber
-     ) f ON f.TeamNumber = allTeams.TeamNumber
-     LEFT OUTER JOIN (
-       SELECT t2.TeamNumber, SUM(t2.HoleNet) AS TeamNetBack
-       FROM (
-         SELECT t.TeamNumber, s.HoleID, MIN(s.NetScore) AS HoleNet
-         FROM TeamGamePlayer t
-         INNER JOIN Score s ON s.GameID = ? AND s.PlayerID = t.PlayerID AND s.HoleID > 9
-         WHERE t.TeamGameID = ?
-         GROUP BY t.TeamNumber, s.HoleID
-       ) t2 GROUP BY t2.TeamNumber
-     ) b ON b.TeamNumber = allTeams.TeamNumber`, [teamGameId, gameId, teamGameId, gameId, teamGameId]);
+    // Same keep-count-aware source of truth as syncOneTeamSlotPayout -- see its comment for why
+    // this can no longer be a separate hardcoded-best-ball query.
+    const totalsRows = (await (0, teamGameService_1.getTeamGameResults)(teamGameId)).map((r) => ({ TeamNumber: r.teamId, total: r.total }));
     // Pot size covers everyone who actually played this one-off's own cut line, cut or no cut --
     // same "the buy-in applies to the whole field, the cut only gates who can WIN" rule as
     // syncOneTeamSlotPayout, using this row's own Net Cut / Net Cut 9 instead of an Options prefix.
